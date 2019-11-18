@@ -24,7 +24,7 @@ import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicLong;
 
-class ConsumeTopic implements Callable<Exception> {
+public class ConsumeTopic implements Callable<Exception> {
     private static final Logger log = LoggerFactory.getLogger(ConsumeTopic.class);
 
     private final int topicId;

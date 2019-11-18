@@ -22,7 +22,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
-class WriteTopic implements Callable<Exception> {
+public class WriteTopic implements Callable<Exception> {
     private static final Logger log = LoggerFactory.getLogger(WriteTopic.class);
 
     private static final SimpleDateFormat formatter = new SimpleDateFormat("yyyyy-mm-dd hh:mm:ss");
