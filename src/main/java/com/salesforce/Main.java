@@ -8,7 +8,6 @@
 package com.salesforce;
 
 import io.micrometer.core.instrument.*;
-import io.micrometer.core.instrument.distribution.ValueAtPercentile;
 import io.micrometer.statsd.StatsdMeterRegistry;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.KafkaAdminClient;

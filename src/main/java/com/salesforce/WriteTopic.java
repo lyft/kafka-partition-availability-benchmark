@@ -7,8 +7,6 @@
 
 package com.salesforce;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Timer;
 import org.apache.kafka.clients.admin.AdminClient;
