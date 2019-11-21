@@ -24,7 +24,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
-public class WriteTopic implements Callable<Exception> {
+class WriteTopic implements Callable<Exception> {
     private static final String AWAITING_PRODUCE_METRIC_NAME = "threadsAwaitingMessageProduce";
 
     private static final Logger log = LoggerFactory.getLogger(WriteTopic.class);

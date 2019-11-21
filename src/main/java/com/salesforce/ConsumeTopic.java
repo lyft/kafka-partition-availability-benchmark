@@ -21,7 +21,7 @@ import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicLong;
 
-public class ConsumeTopic implements Callable<Exception> {
+class ConsumeTopic implements Callable<Exception> {
     private static final String AWAITING_CONSUME_METRIC_NAME = "threadsAwaitingConsume";
     private static final String AWAITING_COMMIT_METRIC_NAME = "threadsAwaitingCommit";
 
