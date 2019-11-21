@@ -7,10 +7,7 @@
 
 package com.salesforce;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import io.micrometer.core.instrument.Counter;
-import io.micrometer.core.instrument.Timer;
+import io.micrometer.core.instrument.*;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.common.TopicPartition;
@@ -25,53 +22,53 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class ConsumeTopic implements Callable<Exception> {
+    private static final String AWAITING_CONSUME_METRIC_NAME = "threadsAwaitingConsume";
+    private static final String AWAITING_COMMIT_METRIC_NAME = "threadsAwaitingCommit";
+
     private static final Logger log = LoggerFactory.getLogger(ConsumeTopic.class);
 
     private final int topicId;
     private final String key;
-    private final int readWriteInterval;
     private final AdminClient kafkaAdminClient;
     private final Map<String, Object> kafkaConsumerConfig;
     private final short replicationFactor;
-    private final boolean keepProducing;
     private final Timer consumerReceiveTimeNanos;
     private final Timer consumerCommitTimeNanos;
-    private final Counter threadsAwaitingConsume;
-    private final Counter threadsAwaitingCommit;
-    private final Counter topicsAwaitingCreation;
+    private final String metricsNamespace;
+    private final String clusterName;
 
     /**
-     * @param topicId              Each topic gets a numeric id
-     * @param key                  Prefix for topics created by this tool
-     * @param readWriteInterval    How long should we wait before polls for consuming new messages
-     * @param kafkaAdminClient
-     * @param kafkaConsumerConfig
-     * @param keepProducing        Whether we are continuously producing messages rather than just producing once
-     * @param topicsAwaitingCreation
+     * @param topicId                  Each topic gets a numeric id.
+     * @param key                      Prefix for topics created by this tool.
+     * @param kafkaAdminClient         Kafka admin client we are using.
+     * @param kafkaConsumerConfig      Map that contains consumer configuration.
+     * @param replicationFactor        Replication factor of the topic to be created.
+     * @param consumerCommitTimeNanos  Time it takes for the consumer to commit its offset.
+     * @param consumerReceiveTimeNanos Time it takes for the consumer to receive the message.
+     * @param metricsNamespace         The namespace to use when submitting metrics.
+     * @param clusterName              Name of the cluster we are monitoring.
      */
-    public ConsumeTopic(int topicId, String key, int readWriteInterval, AdminClient kafkaAdminClient,
-                        Map<String, Object> kafkaConsumerConfig, short replicationFactor, boolean keepProducing,
+    public ConsumeTopic(int topicId, String key, AdminClient kafkaAdminClient,
+                        Map<String, Object> kafkaConsumerConfig, short replicationFactor,
                         Timer consumerReceiveTimeNanos, Timer consumerCommitTimeNanos,
-                        Counter threadsAwaitingConsume, Counter threadsAwaitingCommit, Counter topicsAwaitingCreation) {
+                        String metricsNamespace, String clusterName) {
         this.topicId = topicId;
         this.key = key;
-        this.readWriteInterval = readWriteInterval;
         this.kafkaAdminClient = kafkaAdminClient;
         this.kafkaConsumerConfig = Collections.unmodifiableMap(kafkaConsumerConfig);
         this.replicationFactor = replicationFactor;
-        this.keepProducing = keepProducing;
         this.consumerReceiveTimeNanos = consumerReceiveTimeNanos;
         this.consumerCommitTimeNanos = consumerCommitTimeNanos;
-        this.threadsAwaitingConsume = threadsAwaitingConsume;
-        this.threadsAwaitingCommit = threadsAwaitingCommit;
-        this.topicsAwaitingCreation = topicsAwaitingCreation;
+        this.metricsNamespace = metricsNamespace;
+        this.clusterName = clusterName;
     }
 
     @Override
     public Exception call() {
         String topicName = TopicName.createTopicName(key, topicId);
         try {
-            TopicVerifier.checkTopic(kafkaAdminClient, topicName, replicationFactor, topicsAwaitingCreation);
+            TopicVerifier.checkTopic(kafkaAdminClient, topicName, replicationFactor,
+                    clusterName, metricsNamespace, false);
 
             Map<String, Object> consumerConfigForTopic = new HashMap<>(kafkaConsumerConfig);
             consumerConfigForTopic.put(ConsumerConfig.GROUP_ID_CONFIG, topicName);
@@ -80,14 +77,14 @@ public class ConsumeTopic implements Callable<Exception> {
             consumer.assign(Collections.singleton(topicPartition));
             consumer.seekToBeginning(Collections.singleton(topicPartition));
 
-            threadsAwaitingConsume.increment();
+            gaugeMetric(AWAITING_CONSUME_METRIC_NAME,1);
             while (true) {
                 ConsumerRecords<Integer, byte[]> messages = consumer.poll(Duration.ofMillis(100));
                 if (messages.count() == 0) {
                     log.debug("No messages detected on {}", topicName);
                     continue;
                 }
-                threadsAwaitingConsume.increment(-1);
+                gaugeMetric(AWAITING_CONSUME_METRIC_NAME, -1);
 
                 AtomicLong lastOffset = new AtomicLong();
                 log.debug("Consuming {} records", messages.records(topicPartition).size());
@@ -96,25 +93,31 @@ public class ConsumeTopic implements Callable<Exception> {
                             lastOffset.set(consumerRecord.offset());
                         });
 
-                threadsAwaitingCommit.increment();
+                gaugeMetric(AWAITING_COMMIT_METRIC_NAME, 1);
                 consumerCommitTimeNanos.record(() ->
                         consumer.commitSync(Collections.singletonMap(topicPartition,
                                 new OffsetAndMetadata(lastOffset.get() + 1))));
-                threadsAwaitingCommit.increment(-1);
+                gaugeMetric(AWAITING_COMMIT_METRIC_NAME, -1);
 
                 consumer.seek(topicPartition, lastOffset.get() + 1);
 
                 ConsumerRecord<Integer, byte[]> lastMessage =
                         messages.records(topicPartition).get(messages.count() - 1);
-
                 log.debug("Last consumed message {} -> {}..., consumed {} messages, topic: {}",
-                        lastMessage.key(), new String(lastMessage.value()).substring(0, 15), messages.count(), topicName);
-                threadsAwaitingConsume.increment();
+                        lastMessage.key(), new String(lastMessage.value()).substring(0, 15),
+                        messages.count(), topicName);
+                gaugeMetric(AWAITING_CONSUME_METRIC_NAME,1);
             }
         } catch (Exception e) {
             log.error("Failed consume", e);
             return new Exception("Failed consume on topicName " + topicId, e);
         }
+    }
 
+    private void gaugeMetric(String metricName, final int value) {
+        Metrics.gauge(metricsNamespace,
+                Tags.of(CustomOrderedTag.of("cluster", clusterName, 1),
+                        CustomOrderedTag.of("metric", metricName, 2)),
+                value);
     }
 }

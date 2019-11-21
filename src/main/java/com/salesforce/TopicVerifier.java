@@ -8,6 +8,9 @@
 package com.salesforce;
 
 import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.Metrics;
+import io.micrometer.core.instrument.Tags;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.DescribeTopicsResult;
 import org.apache.kafka.clients.admin.TopicDescription;
@@ -20,12 +23,24 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 class TopicVerifier {
+    private static final String METRIC_NAME = "topicsAwaitingCreation";
+
     private static final Logger log = LoggerFactory.getLogger(TopicVerifier.class);
 
-    public static void checkTopic(AdminClient kafkaAdminClient, String topicName, short replicationFactor,
-                                  Counter topicsCreated)
+    public static void checkTopic(AdminClient kafkaAdminClient,
+                                  String topicName,
+                                  short replicationFactor,
+                                  final String clusterName,
+                                  final String metricsNamespace,
+                                  boolean isRetry)
             throws InterruptedException {
-        topicsCreated.increment();
+
+        if (!isRetry) {
+            Metrics.gauge(metricsNamespace,
+                    Tags.of(CustomOrderedTag.of("cluster", clusterName, 1),
+                            CustomOrderedTag.of("metric", METRIC_NAME, 2)),
+                    1);
+        }
         while (true) {
             DescribeTopicsResult result = kafkaAdminClient.describeTopics(Collections.singleton(topicName));
             Map<String, TopicDescription> descriptionMap;
@@ -35,7 +50,7 @@ class TopicVerifier {
                 if (!unknownTopic.getMessage().contains("UnknownTopicOrPartitionException")) {
                     log.error("UnexpectedException; trying again...", unknownTopic);
                     TimeUnit.SECONDS.sleep(1);
-                    checkTopic(kafkaAdminClient, topicName, replicationFactor, topicsCreated);
+                    checkTopic(kafkaAdminClient, topicName, replicationFactor, clusterName, metricsNamespace, true);
                     break;
                 }
                 log.info("Topic {} not created yet, checking again in 1 second", topicName);
@@ -46,7 +61,10 @@ class TopicVerifier {
             if (!partition.leader().isEmpty()
                     && partition.replicas().size() == replicationFactor
                     && partition.isr().size() >= 1) {
-                topicsCreated.increment(-1);
+                Metrics.gauge(metricsNamespace,
+                        Tags.of(CustomOrderedTag.of("cluster", clusterName, 1),
+                                CustomOrderedTag.of("metric", METRIC_NAME, 2)),
+                        -1);
                 break;
             } else {
                 log.info("Topic hasn't elected leader yet, checking again in 1 sec");

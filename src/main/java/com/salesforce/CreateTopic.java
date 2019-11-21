@@ -26,16 +26,18 @@ public class CreateTopic implements Callable<Exception> {
     private final AdminClient kafkaAdminClient;
     private final short replicationFactor;
     private final Timer topicCreateTimeNanos;
-    private final Counter topicsAwaitingCreation;
+    private final String clusterName;
+    private final String metricNamespace;
 
     public CreateTopic(int topicId, String key, AdminClient kafkaAdminClient, short replicationFactor,
-                       Timer topicCreateTimeNanos, Counter topicsAwaitingCreation) {
+                       String clusterName, String metricNamespace, Timer topicCreateTimeNanos) {
         this.topicId = topicId;
         this.key = key;
         this.kafkaAdminClient = kafkaAdminClient;
         this.replicationFactor = replicationFactor;
         this.topicCreateTimeNanos = topicCreateTimeNanos;
-        this.topicsAwaitingCreation = topicsAwaitingCreation;
+        this.clusterName = clusterName;
+        this.metricNamespace = metricNamespace;
     }
 
     @Override
@@ -49,7 +51,8 @@ public class CreateTopic implements Callable<Exception> {
         // Wait for topic to be created and for leader election to happen
         topicCreateTimeNanos.record(() -> {
             try {
-                TopicVerifier.checkTopic(kafkaAdminClient, topicName, replicationFactor, topicsAwaitingCreation);
+                TopicVerifier.checkTopic(kafkaAdminClient, topicName, replicationFactor,
+                        clusterName, metricNamespace,false);
             } catch (InterruptedException e) {
                 log.error("Unable to record topic creation", e);
             }
