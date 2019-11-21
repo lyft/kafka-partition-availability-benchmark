@@ -50,6 +50,7 @@ public class Main {
 
         final BenchmarkApp benchmarkApp = new BenchmarkApp(settings.getProperty("default_cluster_name"),
                 settings.getProperty("default_metrics_namespace"), settings);
+        benchmarkApp.run();
     }
 
 
