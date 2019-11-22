@@ -77,7 +77,7 @@ class ConsumeTopic implements Callable<Exception> {
             consumer.assign(Collections.singleton(topicPartition));
             consumer.seekToBeginning(Collections.singleton(topicPartition));
 
-            gaugeMetric(AWAITING_CONSUME_METRIC_NAME,1);
+            gaugeMetric(AWAITING_CONSUME_METRIC_NAME, 1);
             while (true) {
                 ConsumerRecords<Integer, byte[]> messages = consumer.poll(Duration.ofMillis(100));
                 if (messages.count() == 0) {
@@ -106,7 +106,7 @@ class ConsumeTopic implements Callable<Exception> {
                 log.debug("Last consumed message {} -> {}..., consumed {} messages, topic: {}",
                         lastMessage.key(), new String(lastMessage.value()).substring(0, 15),
                         messages.count(), topicName);
-                gaugeMetric(AWAITING_CONSUME_METRIC_NAME,1);
+                gaugeMetric(AWAITING_CONSUME_METRIC_NAME, 1);
             }
         } catch (Exception e) {
             log.error("Failed consume", e);

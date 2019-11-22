@@ -20,10 +20,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Properties;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class Main {
     private static final Logger log = LoggerFactory.getLogger(Main.class);
-
 
     public static void initGlobalMetricsRegistry() {
         MeterRegistry registry = new StatsdMeterRegistry(getStr -> null, Clock.SYSTEM);
@@ -48,9 +49,9 @@ public class Main {
             }
         }
 
-        final BenchmarkApp benchmarkApp = new BenchmarkApp(settings.getProperty("default_cluster_name"),
-                settings.getProperty("default_metrics_namespace"), settings);
-        benchmarkApp.run();
+        ExecutorService runBenchmark = Executors.newSingleThreadExecutor();
+        runBenchmark.submit(new BenchmarkApp(settings.getProperty("default_cluster_name"),
+                settings.getProperty("default_metrics_namespace"), settings));
     }
 
 
