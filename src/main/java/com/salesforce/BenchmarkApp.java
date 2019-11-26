@@ -43,48 +43,20 @@ public class BenchmarkApp implements Callable<Exception> {
     public Exception call() {
         try {
             // Topic creates
-            final Timer topicCreateTimeNanos = Timer
-                    .builder("topicCreateTimeNanos")
-                    .description("Topic create time in nanos")
-                    .publishPercentiles(0.5, 0.95, 0.99, 0.999, 0.9999)
-                    .minimumExpectedValue(Duration.ofNanos(10))
-                    .maximumExpectedValue(Duration.ofMinutes(1))
-                    .register(Metrics.globalRegistry);
-
+            final Timer topicCreateTimeNanos = createTimer("topicCreateTimeNanos",
+                    "Topic create time in nanos");
+            // First message produce
+            final Timer firstMessageProduceTimeNanos = createTimer("firstMessageProduceTimeNanos",
+                    "First message produce latency time in nanos");
             // Message produce
-            final Timer firstMessageProduceTimeNanos = Timer
-                    .builder("firstMessageProduceTimeNanos")
-                    .description("First message produce latency time in nanos")
-                    .publishPercentiles(0.5, 0.95, 0.99, 0.999, 0.9999)
-                    .minimumExpectedValue(Duration.ofNanos(10))
-                    .maximumExpectedValue(Duration.ofMinutes(1))
-                    .register(Metrics.globalRegistry);
-            final Timer produceMessageTimeNanos = Timer
-                    .builder("produceMessageTimeNanos")
-                    .description("Time it takes to produce messages in nanos")
-                    .publishPercentiles(0.5, 0.95, 0.99, 0.999, 0.9999)
-                    .maximumExpectedValue(Duration.ofMinutes(1))
-                    .register(Metrics.globalRegistry);
-            final Counter threadsAwaitingMessageProduce = Counter
-                    .builder("threadsAwaitingMessageProduce")
-                    .description("Number of threads that are that are waiting for message batch to be produced")
-                    .register(Metrics.globalRegistry);
-
+            final Timer produceMessageTimeNanos = createTimer("produceMessageTimeNanos",
+                    "Time it takes to produce messages in nanos");
             // Message consume
-            final Timer consumerReceiveTimeNanos = Timer
-                    .builder("consumerReceiveTimeNanos")
-                    .description("Time taken to do consumer.poll")
-                    .publishPercentiles(0.5, 0.95, 0.99, 0.999, 0.9999)
-                    .minimumExpectedValue(Duration.ofNanos(10))
-                    .maximumExpectedValue(Duration.ofMinutes(1))
-                    .register(Metrics.globalRegistry);
-            final Timer consumerCommitTimeNanos = Timer
-                    .builder("consumerCommitTimeNanos")
-                    .description("Time it takes to commit new offset")
-                    .publishPercentiles(0.5, 0.95, 0.99, 0.999, 0.9999)
-                    .minimumExpectedValue(Duration.ofNanos(10))
-                    .maximumExpectedValue(Duration.ofMinutes(1))
-                    .register(Metrics.globalRegistry);
+            final Timer consumerReceiveTimeNanos = createTimer("consumerReceiveTimeNanos",
+                    "Time taken to do consumer.poll");
+            // Offset commit
+            final Timer consumerCommitTimeNanos = createTimer("consumerCommitTimeNanos",
+                    "Time it takes to commit new offset");
 
             Integer numConcurrentTopicCreations = Integer.valueOf(settings.getProperty("num_concurrent_topic_creations"));
             Integer numConcurrentConsumers = Integer.valueOf(settings.getProperty("num_concurrent_consumers"));
@@ -129,30 +101,18 @@ public class BenchmarkApp implements Callable<Exception> {
             kafkaProducerConfig.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getName());
 
             // Global counters
-            Counter topicsCreated = Counter
-                    .builder("numTopicsCreated")
-                    .description("Number of topics we've attempted to create")
-                    .register(Metrics.globalRegistry);
-            Counter topicsCreateFailed = Counter
-                    .builder("numTopicsCreateFailed")
-                    .description("Number of topics we've failed to create")
-                    .register(Metrics.globalRegistry);
-            Counter topicsProduced = Counter
-                    .builder("numTopicsProduced")
-                    .description("Number of topics we've attempted to produce to")
-                    .register(Metrics.globalRegistry);
-            Counter topicsProduceFailed = Counter
-                    .builder("numTopicsProduceFailed")
-                    .description("Number of topics we've failed to produce to")
-                    .register(Metrics.globalRegistry);
-            Counter topicsConsumed = Counter
-                    .builder("numTopicsConsumed")
-                    .description("Number of topics we've attempted to consume from")
-                    .register(Metrics.globalRegistry);
-            Counter topicsConsumeFailed = Counter
-                    .builder("numTopicsConsumeFailed")
-                    .description("Number of topics we've failed to consume from")
-                    .register(Metrics.globalRegistry);
+            Counter topicsCreated = createCounter("numTopicsCreated",
+                    "Number of topics we've attempted to create");
+            Counter topicsCreateFailed = createCounter("numTopicsCreateFailed",
+                    "Number of topics we've failed to create");
+            Counter topicsProduced = createCounter("numTopicsProduced",
+                    "Number of topics we've attempted to produce to");
+            Counter topicsProduceFailed = createCounter("numTopicsProduceFailed",
+                    "Number of topics we've failed to produce to");
+            Counter topicsConsumed = createCounter("numTopicsConsumed",
+                    "Number of topics we've attempted to consume from");
+            Counter topicsConsumeFailed = createCounter("numTopicsConsumeFailed",
+                    "Number of topics we've failed to consume from");
 
             Runtime.getRuntime().addShutdownHook(new Thread(() -> printMetrics(topicsCreated, topicsCreateFailed,
                     topicsProduced, topicsProduceFailed, topicsConsumed, topicsConsumeFailed,
@@ -319,5 +279,29 @@ public class BenchmarkApp implements Callable<Exception> {
             }
         }
         return runningTally;
+    }
+
+    private Counter createCounter(String name, String description) {
+        return Counter
+                .builder(metricsNamespace)
+                .tags(name)
+                .description(description)
+                .register(Metrics.globalRegistry);
+    }
+
+    private Timer createTimer(String name, String description) {
+        return Timer
+                .builder(metricsNamespace)
+                .tags(getTagsForMetric(name))
+                .description(description)
+                .publishPercentiles(0.5, 0.95, 0.99, 0.999, 0.9999)
+                .minimumExpectedValue(Duration.ofNanos(10))
+                .maximumExpectedValue(Duration.ofMinutes(1))
+                .register(Metrics.globalRegistry);
+    }
+
+    private Tags getTagsForMetric(String metricName) {
+        return Tags.of(CustomOrderedTag.of("cluster", clusterName, 1),
+                CustomOrderedTag.of("metric", metricName, 2));
     }
 }
