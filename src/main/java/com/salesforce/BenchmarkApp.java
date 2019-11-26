@@ -178,7 +178,8 @@ public class BenchmarkApp implements Callable<Exception> {
                     if (consumeTopics != null && consumerFutures != null) {
                         consumerFutures.put(consumeTopics.submit(new ConsumeTopic(topic, topicPrefix,
                                 kafkaAdminClient, kafkaConsumerConfig, replicationFactor,
-                                consumerReceiveTimeNanos, consumerCommitTimeNanos, metricsNamespace, clusterName)));
+                                consumerReceiveTimeNanos, consumerCommitTimeNanos, metricsNamespace, clusterName,
+                                readWriteIntervalMs)));
                         topicsConsumed.increment();
                         if (consumerFutures.size() >= numConcurrentConsumers) {
                             log.debug("Consumed {} topics, clearing queue before consuming more...", numConcurrentConsumers);

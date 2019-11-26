@@ -36,6 +36,7 @@ class ConsumeTopic implements Callable<Exception> {
     private final Timer consumerCommitTimeNanos;
     private final String metricsNamespace;
     private final String clusterName;
+    private final int readWriteInterval;
 
     /**
      * @param topicId                  Each topic gets a numeric id.
@@ -47,11 +48,12 @@ class ConsumeTopic implements Callable<Exception> {
      * @param consumerReceiveTimeNanos Time it takes for the consumer to receive the message.
      * @param metricsNamespace         The namespace to use when submitting metrics.
      * @param clusterName              Name of the cluster we are monitoring.
+     * @param readWriteInterval   How long should we wait before polls for consuming new messages
      */
     public ConsumeTopic(int topicId, String key, AdminClient kafkaAdminClient,
                         Map<String, Object> kafkaConsumerConfig, short replicationFactor,
                         Timer consumerReceiveTimeNanos, Timer consumerCommitTimeNanos,
-                        String metricsNamespace, String clusterName) {
+                        String metricsNamespace, String clusterName, int readWriteInterval) {
         this.topicId = topicId;
         this.key = key;
         this.kafkaAdminClient = kafkaAdminClient;
@@ -61,6 +63,7 @@ class ConsumeTopic implements Callable<Exception> {
         this.consumerCommitTimeNanos = consumerCommitTimeNanos;
         this.metricsNamespace = metricsNamespace;
         this.clusterName = clusterName;
+        this.readWriteInterval = readWriteInterval;
     }
 
     @Override
@@ -106,6 +109,7 @@ class ConsumeTopic implements Callable<Exception> {
                 log.debug("Last consumed message {} -> {}..., consumed {} messages, topic: {}",
                         lastMessage.key(), new String(lastMessage.value()).substring(0, 15),
                         messages.count(), topicName);
+                Thread.sleep(readWriteInterval);
                 gaugeMetric(AWAITING_CONSUME_METRIC_NAME, 1);
             }
         } catch (Exception e) {
