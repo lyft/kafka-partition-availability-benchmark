@@ -284,7 +284,7 @@ public class BenchmarkApp implements Callable<Exception> {
     private Counter createCounter(String name, String description) {
         return Counter
                 .builder(metricsNamespace)
-                .tags(name)
+                .tags(getTagsForMetric(name))
                 .description(description)
                 .register(Metrics.globalRegistry);
     }
