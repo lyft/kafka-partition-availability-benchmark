@@ -7,7 +7,6 @@
 
 package com.salesforce;
 
-import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Metrics;
 import io.micrometer.core.instrument.Tags;
 import io.micrometer.core.instrument.Timer;
@@ -39,8 +38,6 @@ class WriteTopic implements Callable<Exception> {
     private final int numMessagesToSendPerBatch;
     private final boolean keepProducing;
     private final int readWriteInterval;
-    private final Timer firstMessageProduceTimeNanos;
-    private final Timer produceMessageTimeNanos;
     private final String metricsNamespace;
     private final String clusterName;
 
@@ -57,15 +54,12 @@ class WriteTopic implements Callable<Exception> {
      *                                      produce each readWriteInterval
      * @param kafkaProducer                 Kafka Producer instance we use
      * @param readWriteInterval             How long to wait between message production
-     * @param firstMessageProduceTimeNanos  Time it takes to produce the first message
-     * @param produceMessageTimeNanos       Time it takes to produce the remaining messages
      * @param metricsNamespace              The namespace of the metrics we emit
      * @param clusterName                   Name of the cluster we are testing on
      */
     public WriteTopic(int topicId, String key, AdminClient kafkaAdminClient, short replicationFactor,
                       int numMessagesToSendPerBatch, boolean keepProducing,
                       KafkaProducer<Integer, byte[]> kafkaProducer, int readWriteInterval,
-                      Timer firstMessageProduceTimeNanos, Timer produceMessageTimeNanos,
                       String metricsNamespace, String clusterName) {
         this.topicId = topicId;
         this.key = key;
@@ -75,8 +69,6 @@ class WriteTopic implements Callable<Exception> {
         this.keepProducing = keepProducing;
         this.kafkaProducer = kafkaProducer;
         this.readWriteInterval = readWriteInterval;
-        this.firstMessageProduceTimeNanos = firstMessageProduceTimeNanos;
-        this.produceMessageTimeNanos = produceMessageTimeNanos;
         this.metricsNamespace = metricsNamespace;
         this.clusterName = clusterName;
     }
@@ -100,7 +92,7 @@ class WriteTopic implements Callable<Exception> {
 
             // Produce one message to "warm" kafka up
             gaugeMetric(AWAITING_PRODUCE_METRIC_NAME, 1);
-            firstMessageProduceTimeNanos.record(() ->
+            getTimer("firstMessageProduceTimeNanos").record(() ->
                     kafkaProducer.send(new ProducerRecord<>(topicName, topicId, byteDataInit)));
             log.debug("Produced first message to topic {}", topicName);
 
@@ -109,7 +101,7 @@ class WriteTopic implements Callable<Exception> {
                 for (int i = 0; i < numMessagesToSendPerBatch; i++) {
                     int finalI = i;
                     final byte[] byteData = new String(System.currentTimeMillis() + "" + new String(randomChars)).getBytes();
-                    produceMessageTimeNanos.record(() -> {
+                    getTimer("produceMessageTimeNanos").record(() -> {
                         Future<RecordMetadata> produce =
                                 kafkaProducer.send(new ProducerRecord<>(topicName, finalI, byteData));
                         kafkaProducer.flush();
@@ -140,5 +132,11 @@ class WriteTopic implements Callable<Exception> {
                 Tags.of(CustomOrderedTag.of("cluster", clusterName, 1),
                         CustomOrderedTag.of("metric", metricName, 2)),
                 value);
+    }
+
+    private Timer getTimer(String timerName) {
+        return Metrics.timer(metricsNamespace,
+                Tags.of(CustomOrderedTag.of("cluster", clusterName, 1),
+                        CustomOrderedTag.of("metric", timerName, 2)));
     }
 }
