@@ -25,17 +25,19 @@ import java.util.stream.Collectors;
 
 public class BenchmarkApp implements Callable<Exception> {
     private static final Logger log = LoggerFactory.getLogger(BenchmarkApp.class);
-    private static final int PRINT_METRICS_PERIOD_SECS = 10;
+    private static final int PRINT_METRICS_PERIOD_SECS = 30;
 
     private final String clusterName;
     private final String metricsNamespace;
     private final Properties settings;
+    private final ThreadPoolExecutor executor;
 
     public BenchmarkApp(final String clusterName, final String metricsNamespace,
-                        final Properties settings) {
+                        final Properties settings, final ThreadPoolExecutor executor) {
         this.clusterName = clusterName;
         this.metricsNamespace = metricsNamespace;
         this.settings = settings;
+        this.executor = executor;
         org.apache.log4j.Logger.getLogger("kafka").setLevel(Level.WARN);
     }
 
@@ -121,17 +123,7 @@ public class BenchmarkApp implements Callable<Exception> {
 
             try (AdminClient kafkaAdminClient = KafkaAdminClient.create(kafkaAdminConfig);
                  KafkaProducer<Integer, byte[]> kafkaProducer = new KafkaProducer<>(kafkaProducerConfig)) {
-                ExecutorService createTopics = Executors.newFixedThreadPool(numConcurrentTopicCreations);
-                ExecutorService writeTopics = null;
-                if (numConcurrentProducers > 0) {
-                    writeTopics = Executors.newFixedThreadPool(numConcurrentProducers);
-                }
-                ExecutorService consumeTopics = null;
-                if (numConcurrentConsumers > 0) {
-                    consumeTopics = Executors.newFixedThreadPool(numConcurrentConsumers);
-                }
-                ExecutorService printMetrics = Executors.newSingleThreadExecutor();
-                printMetrics.submit((Runnable) () -> {
+                executor.submit((Runnable) () -> {
                     while (true) {
                         try {
                             TimeUnit.SECONDS.sleep(PRINT_METRICS_PERIOD_SECS);
@@ -146,19 +138,12 @@ public class BenchmarkApp implements Callable<Exception> {
                 });
 
                 BlockingQueue<Future<Exception>> createTopicFutures = new ArrayBlockingQueue<>(numConcurrentTopicCreations);
-                BlockingQueue<Future<Exception>> writeFutures = null;
-                if (writeTopics != null) {
-                    writeFutures = new ArrayBlockingQueue<>(numConcurrentProducers);
-
-                }
-                BlockingQueue<Future<Exception>> consumerFutures = null;
-                if (consumeTopics != null) {
-                    consumerFutures = new ArrayBlockingQueue<>(numConcurrentConsumers);
-                }
+                BlockingQueue<Future<Exception>> writeFutures = new ArrayBlockingQueue<>(numConcurrentProducers);
+                BlockingQueue<Future<Exception>> consumerFutures = new ArrayBlockingQueue<>(numConcurrentConsumers);
 
                 log.info("Starting benchmark...");
                 for (int topic = 1; topic <= numTopics; topic++) {
-                    createTopicFutures.put(createTopics.submit(new CreateTopic(topic, topicPrefix, kafkaAdminClient,
+                    createTopicFutures.put(executor.submit(new CreateTopic(topic, topicPrefix, kafkaAdminClient,
                             replicationFactor, clusterName, metricsNamespace, topicCreateTimeNanos)));
                     topicsCreated.increment();
                     if (createTopicFutures.size() >= numConcurrentTopicCreations) {
@@ -166,8 +151,8 @@ public class BenchmarkApp implements Callable<Exception> {
                         clearQueue(createTopicFutures, topicsCreateFailed);
                     }
 
-                    if (writeTopics != null && writeFutures != null) {
-                        writeFutures.put(writeTopics.submit(new WriteTopic(topic, topicPrefix, kafkaAdminClient,
+                    if (executor != null && writeFutures != null) {
+                        writeFutures.put(executor.submit(new WriteTopic(topic, topicPrefix, kafkaAdminClient,
                                 replicationFactor, numMessagesToSendPerBatch,
                                 keepProducing, kafkaProducer, readWriteIntervalMs, firstMessageProduceTimeNanos,
                                 produceMessageTimeNanos, metricsNamespace, clusterName)));
@@ -175,8 +160,8 @@ public class BenchmarkApp implements Callable<Exception> {
                     }
 
 
-                    if (consumeTopics != null && consumerFutures != null) {
-                        consumerFutures.put(consumeTopics.submit(new ConsumeTopic(topic, topicPrefix,
+                    if (executor != null && consumerFutures != null) {
+                        consumerFutures.put(executor.submit(new ConsumeTopic(topic, topicPrefix,
                                 kafkaAdminClient, kafkaConsumerConfig, replicationFactor,
                                 consumerReceiveTimeNanos, consumerCommitTimeNanos, metricsNamespace, clusterName,
                                 readWriteIntervalMs)));
@@ -192,19 +177,9 @@ public class BenchmarkApp implements Callable<Exception> {
                         clearQueue(writeFutures, topicsProduceFailed);
                     }
                 }
+                clearQueue(writeFutures, topicsProduceFailed);
+                clearQueue(consumerFutures, topicsConsumeFailed);
 
-                createTopics.shutdown();
-                try {
-                    clearQueue(writeFutures, topicsProduceFailed);
-                    clearQueue(consumerFutures, topicsConsumeFailed);
-                } finally {
-                    try {
-                        writeTopics.shutdownNow();
-                    } finally {
-                        consumeTopics.shutdownNow();
-                    }
-
-                }
             }
         } catch (Exception e) {
             log.error("Failed to run benchmark", e);
