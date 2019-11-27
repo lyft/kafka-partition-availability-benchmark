@@ -277,6 +277,8 @@ public class BenchmarkApp implements Callable<Exception> {
                 }
 
                 runningTally++;
+            } else {
+                Thread.sleep(10000); // wait for 10 secs if not done.
             }
         }
         return runningTally;
