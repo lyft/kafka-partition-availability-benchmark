@@ -8,8 +8,6 @@
 package com.salesforce;
 
 import io.micrometer.core.instrument.Counter;
-import io.micrometer.core.instrument.Metrics;
-import io.micrometer.core.instrument.Tags;
 import io.micrometer.core.instrument.Timer;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.NewTopic;
@@ -27,15 +25,17 @@ public class CreateTopic implements Callable<Exception> {
     private final String key;
     private final AdminClient kafkaAdminClient;
     private final short replicationFactor;
+    private final Timer topicCreateTimeNanos;
     private final String clusterName;
     private final String metricNamespace;
 
     public CreateTopic(int topicId, String key, AdminClient kafkaAdminClient, short replicationFactor,
-                       String clusterName, String metricNamespace) {
+                       String clusterName, String metricNamespace, Timer topicCreateTimeNanos) {
         this.topicId = topicId;
         this.key = key;
         this.kafkaAdminClient = kafkaAdminClient;
         this.replicationFactor = replicationFactor;
+        this.topicCreateTimeNanos = topicCreateTimeNanos;
         this.clusterName = clusterName;
         this.metricNamespace = metricNamespace;
     }
@@ -49,7 +49,7 @@ public class CreateTopic implements Callable<Exception> {
         kafkaAdminClient.createTopics(topic);
 
         // Wait for topic to be created and for leader election to happen
-        getTimer("topicCreateTimeNanos").record(() -> {
+        topicCreateTimeNanos.record(() -> {
             try {
                 TopicVerifier.checkTopic(kafkaAdminClient, topicName, replicationFactor,
                         clusterName, metricNamespace,false);
@@ -61,11 +61,5 @@ public class CreateTopic implements Callable<Exception> {
 
         log.debug("Created topic {}", topic);
         return null;
-    }
-
-    private Timer getTimer(String timerName) {
-        return Metrics.timer(metricNamespace,
-                Tags.of(CustomOrderedTag.of("cluster", clusterName, 1),
-                        CustomOrderedTag.of("metric", timerName, 2)));
     }
 }

@@ -32,6 +32,8 @@ class ConsumeTopic implements Callable<Exception> {
     private final AdminClient kafkaAdminClient;
     private final Map<String, Object> kafkaConsumerConfig;
     private final short replicationFactor;
+    private final Timer consumerReceiveTimeNanos;
+    private final Timer consumerCommitTimeNanos;
     private final String metricsNamespace;
     private final String clusterName;
     private final int readWriteInterval;
@@ -42,18 +44,23 @@ class ConsumeTopic implements Callable<Exception> {
      * @param kafkaAdminClient         Kafka admin client we are using.
      * @param kafkaConsumerConfig      Map that contains consumer configuration.
      * @param replicationFactor        Replication factor of the topic to be created.
+     * @param consumerCommitTimeNanos  Time it takes for the consumer to commit its offset.
+     * @param consumerReceiveTimeNanos Time it takes for the consumer to receive the message.
      * @param metricsNamespace         The namespace to use when submitting metrics.
      * @param clusterName              Name of the cluster we are monitoring.
      * @param readWriteInterval   How long should we wait before polls for consuming new messages
      */
     public ConsumeTopic(int topicId, String key, AdminClient kafkaAdminClient,
                         Map<String, Object> kafkaConsumerConfig, short replicationFactor,
+                        Timer consumerReceiveTimeNanos, Timer consumerCommitTimeNanos,
                         String metricsNamespace, String clusterName, int readWriteInterval) {
         this.topicId = topicId;
         this.key = key;
         this.kafkaAdminClient = kafkaAdminClient;
         this.kafkaConsumerConfig = Collections.unmodifiableMap(kafkaConsumerConfig);
         this.replicationFactor = replicationFactor;
+        this.consumerReceiveTimeNanos = consumerReceiveTimeNanos;
+        this.consumerCommitTimeNanos = consumerCommitTimeNanos;
         this.metricsNamespace = metricsNamespace;
         this.clusterName = clusterName;
         this.readWriteInterval = readWriteInterval;
@@ -85,13 +92,12 @@ class ConsumeTopic implements Callable<Exception> {
                 AtomicLong lastOffset = new AtomicLong();
                 log.debug("Consuming {} records", messages.records(topicPartition).size());
                 messages.records(topicPartition).forEach(consumerRecord -> {
-                            getTimer("consumerReceiveTimeNanos")
-                                    .record(Duration.ofMillis(System.currentTimeMillis() - consumerRecord.timestamp()));
+                            consumerReceiveTimeNanos.record(Duration.ofMillis(System.currentTimeMillis() - consumerRecord.timestamp()));
                             lastOffset.set(consumerRecord.offset());
                         });
 
                 gaugeMetric(AWAITING_COMMIT_METRIC_NAME, 1);
-                getTimer("consumerCommitTimeNanos").record(() ->
+                consumerCommitTimeNanos.record(() ->
                         consumer.commitSync(Collections.singletonMap(topicPartition,
                                 new OffsetAndMetadata(lastOffset.get() + 1))));
                 gaugeMetric(AWAITING_COMMIT_METRIC_NAME, -1);
@@ -118,11 +124,5 @@ class ConsumeTopic implements Callable<Exception> {
                 Tags.of(CustomOrderedTag.of("cluster", clusterName, 1),
                         CustomOrderedTag.of("metric", metricName, 2)),
                 value);
-    }
-
-    private Timer getTimer(String timerName) {
-        return Metrics.timer(metricsNamespace,
-                Tags.of(CustomOrderedTag.of("cluster", clusterName, 1),
-                        CustomOrderedTag.of("metric", timerName, 2)));
     }
 }
