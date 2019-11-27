@@ -30,10 +30,10 @@ public class BenchmarkApp implements Callable<Exception> {
     private final String clusterName;
     private final String metricsNamespace;
     private final Properties settings;
-    private final ThreadPoolExecutor executor;
+    private final ExecutorService executor;
 
     public BenchmarkApp(final String clusterName, final String metricsNamespace,
-                        final Properties settings, final ThreadPoolExecutor executor) {
+                        final Properties settings, final ExecutorService executor) {
         this.clusterName = clusterName;
         this.metricsNamespace = metricsNamespace;
         this.settings = settings;
