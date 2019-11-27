@@ -13,6 +13,7 @@ import io.micrometer.core.instrument.Metrics;
 import io.micrometer.statsd.StatsdMeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import sun.nio.ch.ThreadPool;
 
 import java.io.FileInputStream;
 import java.io.InputStream;
@@ -22,6 +23,7 @@ import java.nio.file.Paths;
 import java.util.Properties;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
 
 public class Main {
     private static final Logger log = LoggerFactory.getLogger(Main.class);
@@ -51,7 +53,8 @@ public class Main {
 
         ExecutorService runBenchmark = Executors.newSingleThreadExecutor();
         runBenchmark.submit(new BenchmarkApp(settings.getProperty("default_cluster_name"),
-                settings.getProperty("default_metrics_namespace"), settings));
+                settings.getProperty("default_metrics_namespace"), settings,
+                Executors.newFixedThreadPool(10)));
     }
 
 
