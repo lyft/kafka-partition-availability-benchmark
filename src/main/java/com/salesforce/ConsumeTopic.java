@@ -106,9 +106,10 @@ class ConsumeTopic implements Callable<Exception> {
 
                 ConsumerRecord<Integer, byte[]> lastMessage =
                         messages.records(topicPartition).get(messages.count() - 1);
+                String lastValue = new String(lastMessage.value());
+                String truncatedValue = lastValue.length() <= 15 ? lastValue : lastValue.substring(0, 15);
                 log.debug("Last consumed message {} -> {}..., consumed {} messages, topic: {}",
-                        lastMessage.key(), new String(lastMessage.value()).substring(0, 15),
-                        messages.count(), topicName);
+                        lastMessage.key(), truncatedValue, messages.count(), topicName);
                 Thread.sleep(readWriteInterval);
                 gaugeMetric(AWAITING_CONSUME_METRIC_NAME, 1);
             }
