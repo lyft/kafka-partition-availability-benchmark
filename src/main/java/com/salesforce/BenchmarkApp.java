@@ -268,7 +268,7 @@ public class BenchmarkApp implements Callable<Exception> {
         while (!futures.isEmpty()) {
             if (futures.peek().isDone()) {
                 Future<Exception> f = futures.take();
-                log.debug("Waiting for {} to close", f.toString());
+                log.info("Waiting for {} to close", f.toString());
                 Exception e = f.get();
                 if (e != null) {
                     failedCounter.increment();
