@@ -7,119 +7,122 @@
 
 package com.salesforce;
 
-import io.prometheus.client.Gauge;
-import io.prometheus.client.Histogram;
+import io.micrometer.core.instrument.*;
 import org.apache.kafka.clients.admin.AdminClient;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.AtomicLong;
 
 class ConsumeTopic implements Callable<Exception> {
-    private static final Logger log = LoggerFactory.getLogger(ConsumeTopic.class);
+    private static final String AWAITING_CONSUME_METRIC_NAME = "threadsAwaitingConsume";
+    private static final String AWAITING_COMMIT_METRIC_NAME = "threadsAwaitingCommit";
 
-    private static final Histogram consumerReceiveTimeSecs = Histogram
-            .build("consumerReceiveTimeSecs", "Time taken to do consumer.poll")
-            .register();
-    private static final Histogram consumerCommitTimeSecs = Histogram
-            .build("consumerCommitTimeSecs", "Time it takes to commit new offset")
-            .register();
-    private static final Gauge threadsAwaitingConsume = Gauge.build("threadsAwaitingConsume",
-            "Number of threads that are that are waiting for message batch to be consumed").register();
-    private static final Gauge threadsAwaitingCommit = Gauge.build("threadsAwaitingCommit",
-            "Number of threads that are that are waiting for message batch to be committed").register();
+    private static final Logger log = LoggerFactory.getLogger(ConsumeTopic.class);
 
     private final int topicId;
     private final String key;
-    private final int readWriteInterval;
     private final AdminClient kafkaAdminClient;
     private final Map<String, Object> kafkaConsumerConfig;
     private final short replicationFactor;
-    private final boolean keepProducing;
+    private final Timer consumerReceiveTimeNanos;
+    private final Timer consumerCommitTimeNanos;
+    private final String metricsNamespace;
+    private final String clusterName;
+    private final int readWriteInterval;
 
     /**
-     * @param topicId              Each topic gets a numeric id
-     * @param key                  Prefix for topics created by this tool
-     * @param readWriteInterval    How long should we wait before polls for consuming new messages
-     * @param kafkaAdminClient
-     * @param kafkaConsumerConfig
-     * @param keepProducing        Whether we are continuously producing messages rather than just producing once
+     * @param topicId                  Each topic gets a numeric id.
+     * @param key                      Prefix for topics created by this tool.
+     * @param kafkaAdminClient         Kafka admin client we are using.
+     * @param kafkaConsumerConfig      Map that contains consumer configuration.
+     * @param replicationFactor        Replication factor of the topic to be created.
+     * @param consumerCommitTimeNanos  Time it takes for the consumer to commit its offset.
+     * @param consumerReceiveTimeNanos Time it takes for the consumer to receive the message.
+     * @param metricsNamespace         The namespace to use when submitting metrics.
+     * @param clusterName              Name of the cluster we are monitoring.
+     * @param readWriteInterval   How long should we wait before polls for consuming new messages
      */
-    public ConsumeTopic(int topicId, String key, int readWriteInterval, AdminClient kafkaAdminClient,
-                        Map<String, Object> kafkaConsumerConfig, short replicationFactor, boolean keepProducing) {
+    public ConsumeTopic(int topicId, String key, AdminClient kafkaAdminClient,
+                        Map<String, Object> kafkaConsumerConfig, short replicationFactor,
+                        Timer consumerReceiveTimeNanos, Timer consumerCommitTimeNanos,
+                        String metricsNamespace, String clusterName, int readWriteInterval) {
         this.topicId = topicId;
         this.key = key;
-        this.readWriteInterval = readWriteInterval;
         this.kafkaAdminClient = kafkaAdminClient;
         this.kafkaConsumerConfig = Collections.unmodifiableMap(kafkaConsumerConfig);
         this.replicationFactor = replicationFactor;
-        this.keepProducing = keepProducing;
+        this.consumerReceiveTimeNanos = consumerReceiveTimeNanos;
+        this.consumerCommitTimeNanos = consumerCommitTimeNanos;
+        this.metricsNamespace = metricsNamespace;
+        this.clusterName = clusterName;
+        this.readWriteInterval = readWriteInterval;
     }
 
     @Override
     public Exception call() {
         String topicName = TopicName.createTopicName(key, topicId);
         try {
-            TopicVerifier.checkTopic(kafkaAdminClient, topicName, replicationFactor);
+            TopicVerifier.checkTopic(kafkaAdminClient, topicName, replicationFactor,
+                    clusterName, metricsNamespace, false);
 
             Map<String, Object> consumerConfigForTopic = new HashMap<>(kafkaConsumerConfig);
             consumerConfigForTopic.put(ConsumerConfig.GROUP_ID_CONFIG, topicName);
-            KafkaConsumer<Integer, Integer> consumer = new KafkaConsumer<>(consumerConfigForTopic);
+            KafkaConsumer<Integer, byte[]> consumer = new KafkaConsumer<>(consumerConfigForTopic);
             TopicPartition topicPartition = new TopicPartition(topicName, 0);
             consumer.assign(Collections.singleton(topicPartition));
+            consumer.seekToBeginning(Collections.singleton(topicPartition));
 
-            threadsAwaitingConsume.inc();
+            gaugeMetric(AWAITING_CONSUME_METRIC_NAME, 1);
             while (true) {
-                ConsumerRecords<Integer, Integer> messages;
-                Histogram.Timer consumerReceiveTimer = consumerReceiveTimeSecs.startTimer();
-                try {
-                    messages = consumer.poll(0);
-                } finally {
-                    consumerReceiveTimer.observeDuration();
-                }
+                ConsumerRecords<Integer, byte[]> messages = consumer.poll(Duration.ofMillis(100));
                 if (messages.count() == 0) {
-                    if (keepProducing) {
-                        threadsAwaitingConsume.dec();
-                        Thread.sleep(readWriteInterval);
-                        threadsAwaitingConsume.inc();
-                        continue;
-                    }
-                    log.debug("Ran out of messages to process for topic {}; starting from beginning", topicName);
-                    consumer.seekToBeginning(Collections.singleton(topicPartition));
-                    threadsAwaitingCommit.inc();
-                    consumerCommitTimeSecs.time(consumer::commitSync);
-                    threadsAwaitingCommit.dec();
-                    threadsAwaitingConsume.dec();
-                    Thread.sleep(readWriteInterval);
-                    threadsAwaitingConsume.inc();
+                    log.debug("No messages detected on {}", topicName);
                     continue;
                 }
+                gaugeMetric(AWAITING_CONSUME_METRIC_NAME, -1);
 
-                threadsAwaitingConsume.dec();
-                threadsAwaitingCommit.inc();
-                consumerCommitTimeSecs.time(consumer::commitSync);
-                threadsAwaitingCommit.dec();
+                AtomicLong lastOffset = new AtomicLong();
+                log.debug("Consuming {} records", messages.records(topicPartition).size());
+                messages.records(topicPartition).forEach(consumerRecord -> {
+                            consumerReceiveTimeNanos.record(Duration.ofMillis(System.currentTimeMillis() - consumerRecord.timestamp()));
+                            lastOffset.set(consumerRecord.offset());
+                        });
 
-                ConsumerRecord<Integer, Integer> lastMessage =
+                gaugeMetric(AWAITING_COMMIT_METRIC_NAME, 1);
+                consumerCommitTimeNanos.record(() ->
+                        consumer.commitSync(Collections.singletonMap(topicPartition,
+                                new OffsetAndMetadata(lastOffset.get() + 1))));
+                gaugeMetric(AWAITING_COMMIT_METRIC_NAME, -1);
+
+                consumer.seek(topicPartition, lastOffset.get() + 1);
+
+                ConsumerRecord<Integer, byte[]> lastMessage =
                         messages.records(topicPartition).get(messages.count() - 1);
-
-                log.debug("Last consumed message {}:{}, consumed {} messages, topic: {}",
-                        lastMessage.key(), lastMessage.value(), messages.count(), topicName);
+                String lastValue = new String(lastMessage.value());
+                String truncatedValue = lastValue.length() <= 15 ? lastValue : lastValue.substring(0, 15);
+                log.debug("Last consumed message {} -> {}..., consumed {} messages, topic: {}",
+                        lastMessage.key(), truncatedValue, messages.count(), topicName);
                 Thread.sleep(readWriteInterval);
-                threadsAwaitingConsume.inc();
+                gaugeMetric(AWAITING_CONSUME_METRIC_NAME, 1);
             }
         } catch (Exception e) {
             log.error("Failed consume", e);
             return new Exception("Failed consume on topicName " + topicId, e);
         }
+    }
 
+    private void gaugeMetric(String metricName, final int value) {
+        Metrics.gauge(metricsNamespace,
+                Tags.of(CustomOrderedTag.of("cluster", clusterName, 1),
+                        CustomOrderedTag.of("metric", metricName, 2)),
+                value);
     }
 }

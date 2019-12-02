@@ -7,57 +7,66 @@
 
 package com.salesforce;
 
-import io.prometheus.client.Gauge;
-import io.prometheus.client.Histogram;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Metrics;
+import io.micrometer.core.instrument.Tags;
+import io.micrometer.core.instrument.Timer;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.clients.producer.RecordMetadata;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.text.SimpleDateFormat;
-import java.util.Date;
+import java.util.*;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 
 class WriteTopic implements Callable<Exception> {
+    private static final String AWAITING_PRODUCE_METRIC_NAME = "threadsAwaitingMessageProduce";
+
     private static final Logger log = LoggerFactory.getLogger(WriteTopic.class);
 
     private static final SimpleDateFormat formatter = new SimpleDateFormat("yyyyy-mm-dd hh:mm:ss");
-
-    private static final Histogram firstMessageProduceTimeSecs = Histogram
-            .build("firstMessageProduceTimeSecs", "First message produce latency time in ms")
-            .register();
-    private static final Histogram produceMessageTimeSecs = Histogram
-            .build("produceMessageTimeSecs", "Time it takes to produce messages in ms")
-            .register();
-    private static final Gauge threadsAwaitingMessageProduce = Gauge.build("threadsAwaitingMessageProduce",
-            "Number of threads that are that are waiting for message batch to be produced").register();
 
     private final int topicId;
     private final String key;
     private final AdminClient kafkaAdminClient;
     private final short replicationFactor;
-    private final KafkaProducer<Integer, Integer> kafkaProducer;
+    private final KafkaProducer<Integer, byte[]> kafkaProducer;
     private final int numMessagesToSendPerBatch;
     private final boolean keepProducing;
     private final int readWriteInterval;
+    private final Timer firstMessageProduceTimeNanos;
+    private final Timer produceMessageTimeNanos;
+    private final String metricsNamespace;
+    private final String clusterName;
+
 
     /**
      * Produce messages thread constructor
      *
-     * @param topicId                   Unique identifier for topic
-     * @param key                       Key for the environment
-     * @param kafkaAdminClient
-     * @param replicationFactor         Kafka's replication factor for messages
-     * @param numMessagesToSendPerBatch Number of messages to produce continuously
-     * @param keepProducing             Whether we should produce one message only or keep produce thread alive and
-     *                                  produce each readWriteInterval
-     * @param kafkaProducer
-     * @param readWriteInterval         How long to wait between message production
+     * @param topicId                       Unique identifier for topic
+     * @param key                           Key for the environment
+     * @param kafkaAdminClient              Kafka admin client instance we use
+     * @param replicationFactor             Kafka's replication factor for messages
+     * @param numMessagesToSendPerBatch     Number of messages to produce continuously
+     * @param keepProducing                 Whether we should produce one message only or keep produce thread alive and
+     *                                      produce each readWriteInterval
+     * @param kafkaProducer                 Kafka Producer instance we use
+     * @param readWriteInterval             How long to wait between message production
+     * @param firstMessageProduceTimeNanos  Time it takes to produce the first message
+     * @param produceMessageTimeNanos       Time it takes to produce the remaining messages
+     * @param metricsNamespace              The namespace of the metrics we emit
+     * @param clusterName                   Name of the cluster we are testing on
      */
     public WriteTopic(int topicId, String key, AdminClient kafkaAdminClient, short replicationFactor,
                       int numMessagesToSendPerBatch, boolean keepProducing,
-                      KafkaProducer<Integer, Integer> kafkaProducer, int readWriteInterval) {
+                      KafkaProducer<Integer, byte[]> kafkaProducer, int readWriteInterval,
+                      Timer firstMessageProduceTimeNanos, Timer produceMessageTimeNanos,
+                      String metricsNamespace, String clusterName) {
         this.topicId = topicId;
         this.key = key;
         this.kafkaAdminClient = kafkaAdminClient;
@@ -66,6 +75,10 @@ class WriteTopic implements Callable<Exception> {
         this.keepProducing = keepProducing;
         this.kafkaProducer = kafkaProducer;
         this.readWriteInterval = readWriteInterval;
+        this.firstMessageProduceTimeNanos = firstMessageProduceTimeNanos;
+        this.produceMessageTimeNanos = produceMessageTimeNanos;
+        this.metricsNamespace = metricsNamespace;
+        this.clusterName = clusterName;
     }
 
     @Override
@@ -73,26 +86,44 @@ class WriteTopic implements Callable<Exception> {
         String topicName = TopicName.createTopicName(key, topicId);
 
         try {
-            TopicVerifier.checkTopic(kafkaAdminClient, topicName, replicationFactor);
+            TopicVerifier.checkTopic(kafkaAdminClient, topicName, replicationFactor,
+                    clusterName, metricsNamespace, false);
+
+            Map<String, String> messageData = new HashMap<>();
+            // TODO: Tunable size of messages
+            int sizeOfMessage = 512;
+            char[] randomChars = new char[sizeOfMessage];
+            Arrays.fill(randomChars, '9');
+            messageData.put("Junk", String.valueOf(randomChars));
+            final byte[] byteDataInit = (System.currentTimeMillis() + "" + new String(randomChars)).getBytes();
+
 
             // Produce one message to "warm" kafka up
-            threadsAwaitingMessageProduce.inc();
-            firstMessageProduceTimeSecs.time(() ->
-                    kafkaProducer.send(new ProducerRecord<>(topicName, topicId, -1)));
+            gaugeMetric(AWAITING_PRODUCE_METRIC_NAME, 1);
+            firstMessageProduceTimeNanos.record(() ->
+                    kafkaProducer.send(new ProducerRecord<>(topicName, topicId, byteDataInit)));
             log.debug("Produced first message to topic {}", topicName);
-
 
             while (keepProducing) {
                 // TODO: Get this from properties
                 for (int i = 0; i < numMessagesToSendPerBatch; i++) {
-                    Histogram.Timer requestTimer = produceMessageTimeSecs.startTimer();
-                    kafkaProducer.send(new ProducerRecord<>(topicName, topicId, i));
-                    requestTimer.observeDuration();
+                    int finalI = i;
+                    final byte[] byteData = new String(System.currentTimeMillis() + "" + new String(randomChars)).getBytes();
+                    produceMessageTimeNanos.record(() -> {
+                        Future<RecordMetadata> produce =
+                                kafkaProducer.send(new ProducerRecord<>(topicName, finalI, byteData));
+                        kafkaProducer.flush();
+                        try {
+                            produce.get();
+                        } catch (InterruptedException | ExecutionException e) {
+                            log.error("Failed to get record metadata after produce");
+                        }
+                    });
                     log.debug("{}: Produced message {}", formatter.format(new Date()), topicId);
                 }
-                threadsAwaitingMessageProduce.dec();
+                gaugeMetric(AWAITING_PRODUCE_METRIC_NAME, -1);
                 Thread.sleep(readWriteInterval);
-                threadsAwaitingMessageProduce.inc();
+                gaugeMetric(AWAITING_PRODUCE_METRIC_NAME, 1);
             }
             log.debug("Produce {} messages to topic {}", numMessagesToSendPerBatch, topicName);
 
@@ -102,5 +133,12 @@ class WriteTopic implements Callable<Exception> {
             log.error("Failed to produce for topic {}", topicName, e);
             return e;
         }
+    }
+
+    private void gaugeMetric(String metricName, final int value) {
+        Metrics.gauge(metricsNamespace,
+                Tags.of(CustomOrderedTag.of("cluster", clusterName, 1),
+                        CustomOrderedTag.of("metric", metricName, 2)),
+                value);
     }
 }

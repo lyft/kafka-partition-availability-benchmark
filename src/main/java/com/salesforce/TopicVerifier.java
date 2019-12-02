@@ -7,7 +7,10 @@
 
 package com.salesforce;
 
-import io.prometheus.client.Gauge;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.Metrics;
+import io.micrometer.core.instrument.Tags;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.DescribeTopicsResult;
 import org.apache.kafka.clients.admin.TopicDescription;
@@ -17,16 +20,27 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Collections;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 class TopicVerifier {
-    private static final Logger log = LoggerFactory.getLogger(TopicVerifier.class);
-    private static final Gauge topicsCreated = Gauge.build("topicsAwaitingCreation",
-            "Number of threads that are that are waiting for topics created and have leaders elected for " +
-                    "said topics").register();
+    private static final String METRIC_NAME = "topicsAwaitingCreation";
 
-    public static void checkTopic(AdminClient kafkaAdminClient, String topicName, short replicationFactor)
+    private static final Logger log = LoggerFactory.getLogger(TopicVerifier.class);
+
+    public static void checkTopic(AdminClient kafkaAdminClient,
+                                  String topicName,
+                                  short replicationFactor,
+                                  final String clusterName,
+                                  final String metricsNamespace,
+                                  boolean isRetry)
             throws InterruptedException {
-        topicsCreated.inc();
+
+        if (!isRetry) {
+            Metrics.gauge(metricsNamespace,
+                    Tags.of(CustomOrderedTag.of("cluster", clusterName, 1),
+                            CustomOrderedTag.of("metric", METRIC_NAME, 2)),
+                    1);
+        }
         while (true) {
             DescribeTopicsResult result = kafkaAdminClient.describeTopics(Collections.singleton(topicName));
             Map<String, TopicDescription> descriptionMap;
@@ -35,24 +49,27 @@ class TopicVerifier {
             } catch (Exception unknownTopic) {
                 if (!unknownTopic.getMessage().contains("UnknownTopicOrPartitionException")) {
                     log.error("UnexpectedException; trying again...", unknownTopic);
-                    Thread.sleep(1000);
-                    checkTopic(kafkaAdminClient, topicName, replicationFactor);
+                    TimeUnit.SECONDS.sleep(1);
+                    checkTopic(kafkaAdminClient, topicName, replicationFactor, clusterName, metricsNamespace, true);
                     break;
                 }
                 log.info("Topic {} not created yet, checking again in 1 second", topicName);
-                Thread.sleep(1000);
+                TimeUnit.SECONDS.sleep(1);
                 continue;
             }
             TopicPartitionInfo partition = descriptionMap.get(topicName).partitions().get(0);
             if (!partition.leader().isEmpty()
                     && partition.replicas().size() == replicationFactor
-                    && partition.isr().size() > 1) {
-                topicsCreated.dec();
+                    && partition.isr().size() >= 1) {
+                Metrics.gauge(metricsNamespace,
+                        Tags.of(CustomOrderedTag.of("cluster", clusterName, 1),
+                                CustomOrderedTag.of("metric", METRIC_NAME, 2)),
+                        -1);
                 break;
             } else {
                 log.info("Topic hasn't elected leader yet, checking again in 1 sec");
                 log.info("Leader: {} Replicas: {} ISR: {}", partition.leader(), partition.replicas(), partition.isr());
-                Thread.sleep(1000);
+                TimeUnit.SECONDS.sleep(1);
             }
         }
     }
