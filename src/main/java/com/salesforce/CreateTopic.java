@@ -7,7 +7,6 @@
 
 package com.salesforce;
 
-import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Timer;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.NewTopic;
@@ -25,17 +24,17 @@ public class CreateTopic implements Callable<Exception> {
     private final String key;
     private final AdminClient kafkaAdminClient;
     private final short replicationFactor;
-    private final Timer topicCreateTimeNanos;
+    private final Timer topicCreateTimeMillis;
     private final String clusterName;
     private final String metricNamespace;
 
     public CreateTopic(int topicId, String key, AdminClient kafkaAdminClient, short replicationFactor,
-                       String clusterName, String metricNamespace, Timer topicCreateTimeNanos) {
+                       String clusterName, String metricNamespace, Timer topicCreateTimeMillis) {
         this.topicId = topicId;
         this.key = key;
         this.kafkaAdminClient = kafkaAdminClient;
         this.replicationFactor = replicationFactor;
-        this.topicCreateTimeNanos = topicCreateTimeNanos;
+        this.topicCreateTimeMillis = topicCreateTimeMillis;
         this.clusterName = clusterName;
         this.metricNamespace = metricNamespace;
     }
@@ -49,7 +48,7 @@ public class CreateTopic implements Callable<Exception> {
         kafkaAdminClient.createTopics(topic);
 
         // Wait for topic to be created and for leader election to happen
-        topicCreateTimeNanos.record(() -> {
+        topicCreateTimeMillis.record(() -> {
             try {
                 TopicVerifier.checkTopic(kafkaAdminClient, topicName, replicationFactor,
                         clusterName, metricNamespace,false);

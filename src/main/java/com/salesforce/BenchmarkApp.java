@@ -43,19 +43,19 @@ public class BenchmarkApp implements Callable<Exception> {
     public Exception call() {
         try {
             // Topic creates
-            final Timer topicCreateTimeNanos = createTimer("topicCreateTimeNanos",
+            final Timer topicCreateTimeMillis = createTimer("topicCreateTimeMillis",
                     "Topic create time in nanos");
             // First message produce
-            final Timer firstMessageProduceTimeNanos = createTimer("firstMessageProduceTimeNanos",
+            final Timer firstMessageProduceTimeMillis = createTimer("firstMessageProduceTimeMillis",
                     "First message produce latency time in nanos");
             // Message produce
-            final Timer produceMessageTimeNanos = createTimer("produceMessageTimeNanos",
+            final Timer produceMessageTimeMillis = createTimer("produceMessageTimeMillis",
                     "Time it takes to produce messages in nanos");
             // Message consume
-            final Timer consumerReceiveTimeNanos = createTimer("consumerReceiveTimeNanos",
+            final Timer consumerReceiveTimeMillis = createTimer("consumerReceiveTimeMillis",
                     "Time taken to do consumer.poll");
             // Offset commit
-            final Timer consumerCommitTimeNanos = createTimer("consumerCommitTimeNanos",
+            final Timer consumerCommitTimeMillis = createTimer("consumerCommitTimeMillis",
                     "Time it takes to commit new offset");
 
             Integer numConcurrentTopicCreations = Integer.valueOf(settings.getProperty("num_concurrent_topic_creations"));
@@ -116,8 +116,8 @@ public class BenchmarkApp implements Callable<Exception> {
 
             Runtime.getRuntime().addShutdownHook(new Thread(() -> printMetrics(topicsCreated, topicsCreateFailed,
                     topicsProduced, topicsProduceFailed, topicsConsumed, topicsConsumeFailed,
-                    firstMessageProduceTimeNanos, produceMessageTimeNanos, consumerReceiveTimeNanos,
-                    consumerCommitTimeNanos)));
+                    firstMessageProduceTimeMillis, produceMessageTimeMillis, consumerReceiveTimeMillis,
+                    consumerCommitTimeMillis)));
 
             try (AdminClient kafkaAdminClient = KafkaAdminClient.create(kafkaAdminConfig);
                  KafkaProducer<Integer, byte[]> kafkaProducer = new KafkaProducer<>(kafkaProducerConfig)) {
@@ -140,8 +140,8 @@ public class BenchmarkApp implements Callable<Exception> {
                         }
                         printMetrics(topicsCreated, topicsCreateFailed, topicsProduced,
                                 topicsProduceFailed, topicsConsumed, topicsConsumeFailed,
-                                firstMessageProduceTimeNanos, produceMessageTimeNanos,
-                                consumerReceiveTimeNanos, consumerCommitTimeNanos);
+                                firstMessageProduceTimeMillis, produceMessageTimeMillis,
+                                consumerReceiveTimeMillis, consumerCommitTimeMillis);
                     }
                 });
 
@@ -159,7 +159,7 @@ public class BenchmarkApp implements Callable<Exception> {
                 log.info("Starting benchmark...");
                 for (int topic = 1; topic <= numTopics; topic++) {
                     createTopicFutures.put(createTopics.submit(new CreateTopic(topic, topicPrefix, kafkaAdminClient,
-                            replicationFactor, clusterName, metricsNamespace, topicCreateTimeNanos)));
+                            replicationFactor, clusterName, metricsNamespace, topicCreateTimeMillis)));
                     topicsCreated.increment();
                     if (createTopicFutures.size() >= numConcurrentTopicCreations) {
                         log.info("Created {} topics, ensuring success before producing more...", numConcurrentTopicCreations);
@@ -169,8 +169,8 @@ public class BenchmarkApp implements Callable<Exception> {
                     if (writeTopics != null && writeFutures != null) {
                         writeFutures.put(writeTopics.submit(new WriteTopic(topic, topicPrefix, kafkaAdminClient,
                                 replicationFactor, numMessagesToSendPerBatch,
-                                keepProducing, kafkaProducer, readWriteIntervalMs, firstMessageProduceTimeNanos,
-                                produceMessageTimeNanos, metricsNamespace, clusterName)));
+                                keepProducing, kafkaProducer, readWriteIntervalMs, firstMessageProduceTimeMillis,
+                                produceMessageTimeMillis, metricsNamespace, clusterName)));
                         topicsProduced.increment();
                     }
 
@@ -178,7 +178,7 @@ public class BenchmarkApp implements Callable<Exception> {
                     if (consumeTopics != null && consumerFutures != null) {
                         consumerFutures.put(consumeTopics.submit(new ConsumeTopic(topic, topicPrefix,
                                 kafkaAdminClient, kafkaConsumerConfig, replicationFactor,
-                                consumerReceiveTimeNanos, consumerCommitTimeNanos, metricsNamespace, clusterName,
+                                consumerReceiveTimeMillis, consumerCommitTimeMillis, metricsNamespace, clusterName,
                                 readWriteIntervalMs)));
                         topicsConsumed.increment();
                         if (consumerFutures.size() >= numConcurrentConsumers) {
@@ -215,8 +215,8 @@ public class BenchmarkApp implements Callable<Exception> {
 
     private static void printMetrics(Counter topicsCreated, Counter topicsCreateFailed, Counter topicsProduced,
                                      Counter topicsProduceFailed, Counter topicsConsumed, Counter topicConsumeFailed,
-                                     Timer firstMessageProduceTimeNanos, Timer produceMessageTimeNanos,
-                                     Timer consumerReceiveTimeNanos, Timer consumerCommitTimeNanos) {
+                                     Timer firstMessageProduceTimeMillis, Timer produceMessageTimeMillis,
+                                     Timer consumerReceiveTimeMillis, Timer consumerCommitTimeMillis) {
         log.info("Stopping printing current accumulated metrics");
         log.info("Topics created: {}", topicsCreated.count());
         log.info("Topics create failed: {}", topicsCreateFailed.count());
@@ -225,39 +225,31 @@ public class BenchmarkApp implements Callable<Exception> {
         log.info("Topics consumed from: {}", topicsConsumed.count());
         log.info("Topics consuming failed: {}", topicConsumeFailed.count());
 
-        log.info("Produced num: {}", produceMessageTimeNanos.count());
-        log.info("First Message Produce percentiles: {}", Arrays.stream(firstMessageProduceTimeNanos.takeSnapshot().percentileValues())
+        log.info("Produced num: {}", produceMessageTimeMillis.count());
+        log.info("First Message Produce percentiles: {}", Arrays.stream(firstMessageProduceTimeMillis.takeSnapshot().percentileValues())
                 .map(valueAtPercentile ->
                         String.format("%sms at %s%%",
-                                (double) TimeUnit.NANOSECONDS.toMicros(
-                                        Double.valueOf(valueAtPercentile.value()).longValue()
-                                ) / 1000,
+                                Double.valueOf(valueAtPercentile.value()).toString(),
                                 valueAtPercentile.percentile() * 100))
                 .collect(Collectors.joining(" ")));
-        log.info("Produce percentiles: {}", Arrays.stream(produceMessageTimeNanos.takeSnapshot().percentileValues())
+        log.info("Produce percentiles: {}", Arrays.stream(produceMessageTimeMillis.takeSnapshot().percentileValues())
                 .map(valueAtPercentile ->
                         String.format("%sms at %s%%",
-                                (double) TimeUnit.NANOSECONDS.toMicros(
-                                        Double.valueOf(valueAtPercentile.value()).longValue()
-                                ) / 1000,
+                                Double.valueOf(valueAtPercentile.value()).toString(),
                                 valueAtPercentile.percentile() * 100))
                 .collect(Collectors.joining(" ")));
-        log.info("Commit num: {}", consumerCommitTimeNanos.count());
-        log.info("Commit percentiles: {}", Arrays.stream(consumerCommitTimeNanos.takeSnapshot().percentileValues())
+        log.info("Commit num: {}", consumerCommitTimeMillis.count());
+        log.info("Commit percentiles: {}", Arrays.stream(consumerCommitTimeMillis.takeSnapshot().percentileValues())
                 .map(valueAtPercentile ->
                         String.format("%sms at %s%%",
-                                (double) TimeUnit.NANOSECONDS.toMicros(
-                                        Double.valueOf(valueAtPercentile.value()).longValue()
-                                ) / 1000,
+                                Double.valueOf(valueAtPercentile.value()).toString(),
                                 valueAtPercentile.percentile() * 100))
                 .collect(Collectors.joining(" ")));
-        log.info("Consumed num: {}", consumerReceiveTimeNanos.count());
-        log.info("E2E percentiles: {}", Arrays.stream(consumerReceiveTimeNanos.takeSnapshot().percentileValues())
+        log.info("Consumed num: {}", consumerReceiveTimeMillis.count());
+        log.info("E2E percentiles: {}", Arrays.stream(consumerReceiveTimeMillis.takeSnapshot().percentileValues())
                 .map(valueAtPercentile ->
                         String.format("%sms at %s%%",
-                                (double) TimeUnit.NANOSECONDS.toMicros(
-                                        Double.valueOf(valueAtPercentile.value()).longValue()
-                                ) / 1000,
+                                Double.valueOf(valueAtPercentile.value()).toString(),
                                 valueAtPercentile.percentile() * 100))
                 .collect(Collectors.joining(" ")));
     }
