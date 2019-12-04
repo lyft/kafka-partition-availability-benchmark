@@ -78,7 +78,9 @@ class ConsumeTopic implements Callable<Exception> {
             KafkaConsumer<Integer, byte[]> consumer = new KafkaConsumer<>(consumerConfigForTopic);
             TopicPartition topicPartition = new TopicPartition(topicName, 0);
             consumer.assign(Collections.singleton(topicPartition));
-            consumer.seekToBeginning(Collections.singleton(topicPartition));
+            // Always start from end, since otherwise we'll play the catch up game.
+            // Our goal here is not to monitor the lag.
+            consumer.seekToEnd(Collections.singleton(topicPartition));
 
             gaugeMetric(AWAITING_CONSUME_METRIC_NAME, 1);
             while (true) {
