@@ -112,7 +112,6 @@ class ConsumeTopic implements Callable<Exception> {
                 String truncatedValue = lastValue.length() <= 15 ? lastValue : lastValue.substring(0, 15);
                 log.debug("Last consumed message {} -> {}..., consumed {} messages, topic: {}",
                         lastMessage.key(), truncatedValue, messages.count(), topicName);
-                Thread.sleep(readWriteInterval);
                 gaugeMetric(AWAITING_CONSUME_METRIC_NAME, 1);
             }
         } catch (Exception e) {
