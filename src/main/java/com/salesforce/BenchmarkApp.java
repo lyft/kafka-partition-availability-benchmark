@@ -74,11 +74,11 @@ public class BenchmarkApp implements Callable<Exception> {
                 log.error("You cannot concurrently create more topics than desired");
                 System.exit(4);
             }
+
             String topicPrefix = settings.getProperty("default_topic_prefix");
-            int readWriteIntervalMs = Integer.parseInt(settings.getProperty("read_write_interval_ms"));
-
+            int writeIntervalMs = Integer.parseInt(settings.getProperty("write_interval_ms"));
+            int readIntervalMs = Integer.parseInt(settings.getProperty("read_interval_ms"));
             int numMessagesToSendPerBatch = Integer.parseInt(settings.getProperty("messages_per_batch"));
-
             boolean keepProducing = Boolean.parseBoolean(settings.getProperty("keep_producing"));
 
             // Admin settings
@@ -169,7 +169,7 @@ public class BenchmarkApp implements Callable<Exception> {
                     if (writeTopics != null && writeFutures != null) {
                         writeFutures.put(writeTopics.submit(new WriteTopic(topic, topicPrefix, kafkaAdminClient,
                                 replicationFactor, numMessagesToSendPerBatch,
-                                keepProducing, kafkaProducer, readWriteIntervalMs, firstMessageProduceTimeMillis,
+                                keepProducing, kafkaProducer, writeIntervalMs, firstMessageProduceTimeMillis,
                                 produceMessageTimeMillis, metricsNamespace, clusterName)));
                         topicsProduced.increment();
                     }
@@ -179,7 +179,7 @@ public class BenchmarkApp implements Callable<Exception> {
                         consumerFutures.put(consumeTopics.submit(new ConsumeTopic(topic, topicPrefix,
                                 kafkaAdminClient, kafkaConsumerConfig, replicationFactor,
                                 consumerReceiveTimeMillis, consumerCommitTimeMillis, metricsNamespace, clusterName,
-                                readWriteIntervalMs)));
+                                readIntervalMs, keepProducing)));
                         topicsConsumed.increment();
                         if (consumerFutures.size() >= numConcurrentConsumers) {
                             log.debug("Consumed {} topics, clearing queue before consuming more...", numConcurrentConsumers);
