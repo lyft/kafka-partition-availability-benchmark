@@ -18,6 +18,7 @@ import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -36,7 +37,8 @@ class ConsumeTopic implements Callable<Exception> {
     private final Timer consumerCommitTimeMillis;
     private final String metricsNamespace;
     private final String clusterName;
-    private final int readWriteInterval;
+    private final int readInterval;
+    private final boolean areProducersActive;
 
     /**
      * @param topicId                  Each topic gets a numeric id.
@@ -48,12 +50,14 @@ class ConsumeTopic implements Callable<Exception> {
      * @param consumerReceiveTimeMillis Time it takes for the consumer to receive the message.
      * @param metricsNamespace         The namespace to use when submitting metrics.
      * @param clusterName              Name of the cluster we are monitoring.
-     * @param readWriteInterval   How long should we wait before polls for consuming new messages
+     * @param readInterval   How long should we wait before polls for consuming new messages
+     * @param areProducersActive Indicates whether producers keep producing messages to the topic or not
      */
     public ConsumeTopic(int topicId, String key, AdminClient kafkaAdminClient,
                         Map<String, Object> kafkaConsumerConfig, short replicationFactor,
                         Timer consumerReceiveTimeMillis, Timer consumerCommitTimeMillis,
-                        String metricsNamespace, String clusterName, int readWriteInterval) {
+                        String metricsNamespace, String clusterName, int readInterval,
+                        boolean areProducersActive) {
         this.topicId = topicId;
         this.key = key;
         this.kafkaAdminClient = kafkaAdminClient;
@@ -63,7 +67,8 @@ class ConsumeTopic implements Callable<Exception> {
         this.consumerCommitTimeMillis = consumerCommitTimeMillis;
         this.metricsNamespace = metricsNamespace;
         this.clusterName = clusterName;
-        this.readWriteInterval = readWriteInterval;
+        this.readInterval = readInterval;
+        this.areProducersActive = areProducersActive;
     }
 
     @Override
@@ -78,7 +83,15 @@ class ConsumeTopic implements Callable<Exception> {
             KafkaConsumer<Integer, byte[]> consumer = new KafkaConsumer<>(consumerConfigForTopic);
             TopicPartition topicPartition = new TopicPartition(topicName, 0);
             consumer.assign(Collections.singleton(topicPartition));
-            consumer.seekToBeginning(Collections.singleton(topicPartition));
+
+            // If we have producers producing non-stop, we always read from the end.
+            final Set<TopicPartition> partitions = Collections.singleton(topicPartition);
+            if (areProducersActive) {
+                consumer.seekToEnd(partitions);
+            } else {
+                // otherwise we need to read from the beginning.
+                consumer.seekToBeginning(partitions);
+            }
 
             gaugeMetric(AWAITING_CONSUME_METRIC_NAME, 1);
             while (true) {
@@ -110,7 +123,7 @@ class ConsumeTopic implements Callable<Exception> {
                 String truncatedValue = lastValue.length() <= 15 ? lastValue : lastValue.substring(0, 15);
                 log.debug("Last consumed message {} -> {}..., consumed {} messages, topic: {}",
                         lastMessage.key(), truncatedValue, messages.count(), topicName);
-                Thread.sleep(readWriteInterval);
+                Thread.sleep(readInterval);
                 gaugeMetric(AWAITING_CONSUME_METRIC_NAME, 1);
             }
         } catch (Exception e) {
