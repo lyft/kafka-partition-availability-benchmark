@@ -2,11 +2,17 @@ package com.salesforce;
 
 import io.micrometer.core.instrument.*;
 
+import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.KafkaAdminClient;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.common.config.SaslConfigs;
+import org.apache.kafka.common.config.SslConfigs;
+import org.apache.kafka.common.errors.UnsupportedSaslMechanismException;
+import org.apache.kafka.common.security.auth.SecurityProtocol;
+import org.apache.kafka.common.security.scram.internals.ScramMechanism;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.kafka.common.serialization.IntegerDeserializer;
@@ -92,13 +98,26 @@ public class BenchmarkApp implements Callable<Exception> {
             kafkaConsumerConfig.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, settings.getProperty("kafka.enable.auto.commit"));
 
             // Producer settings
-            short replicationFactor = Short.parseShort(settings.getProperty("kafka.replication.factor"));
-            String kafkaAcks = settings.getProperty("kafka.producer.acks");
-
             Map<String, Object> kafkaProducerConfig = new HashMap<>(kafkaAdminConfig);
-            kafkaProducerConfig.put(ProducerConfig.ACKS_CONFIG, kafkaAcks);
+            kafkaProducerConfig.put(ProducerConfig.ACKS_CONFIG, settings.getProperty("kafka.producer.acks"));
             kafkaProducerConfig.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, IntegerSerializer.class.getName());
             kafkaProducerConfig.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getName());
+
+            if (Boolean.valueOf(settings.getProperty("secure_clients_enabled"))) {
+                kafkaConsumerConfig.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, SecurityProtocol.SASL_SSL);
+                kafkaConsumerConfig.put(SaslConfigs.SASL_MECHANISM, ScramMechanism.SCRAM_SHA_256);
+                kafkaConsumerConfig.put(SaslConfigs.SASL_JAAS_CONFIG, settings.getProperty("sasl_jaas_config_reader"));
+                kafkaConsumerConfig.put(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG, settings.getProperty("trust_store_location"));
+                kafkaConsumerConfig.put(SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG, settings.getProperty("trust_store_pw"));
+                kafkaConsumerConfig.put(SslConfigs.SSL_ENDPOINT_IDENTIFICATION_ALGORITHM_CONFIG, "https");
+
+                kafkaProducerConfig.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, SecurityProtocol.SASL_SSL);
+                kafkaProducerConfig.put(SaslConfigs.SASL_MECHANISM, ScramMechanism.SCRAM_SHA_256);
+                kafkaProducerConfig.put(SaslConfigs.SASL_JAAS_CONFIG, settings.getProperty("sasl_jaas_config_writer"));
+                kafkaProducerConfig.put(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG, settings.getProperty("trust_store_location"));
+                kafkaProducerConfig.put(SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG, settings.getProperty("trust_store_pw"));
+                kafkaProducerConfig.put(SslConfigs.SSL_ENDPOINT_IDENTIFICATION_ALGORITHM_CONFIG, "https");
+            }
 
             // Global counters
             Counter topicsCreated = createCounter("numTopicsCreated",
@@ -156,6 +175,7 @@ public class BenchmarkApp implements Callable<Exception> {
                     consumerFutures = new ArrayBlockingQueue<>(numConcurrentConsumers);
                 }
 
+                short replicationFactor = Short.parseShort(settings.getProperty("kafka.replication.factor"));
                 log.info("Starting benchmark...");
                 for (int topic = 1; topic <= numTopics; topic++) {
                     createTopicFutures.put(createTopics.submit(new CreateTopic(topic, topicPrefix, kafkaAdminClient,
