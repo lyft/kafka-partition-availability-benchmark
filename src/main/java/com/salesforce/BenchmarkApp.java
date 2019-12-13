@@ -89,6 +89,7 @@ public class BenchmarkApp implements Callable<Exception> {
 
             // Admin settings
             Map<String, Object> kafkaAdminConfig = new HashMap<>();
+            boolean useTls = settings.getProperty("kafka.brokers").endsWith("9093");
             kafkaAdminConfig.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, settings.getProperty("kafka.brokers"));
 
             // Consumer settings
@@ -104,21 +105,30 @@ public class BenchmarkApp implements Callable<Exception> {
             kafkaProducerConfig.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getName());
 
             if (Boolean.valueOf(settings.getProperty("secure_clients_enabled"))) {
-                kafkaConsumerConfig.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, SecurityProtocol.SASL_SSL.name());
+                if (useTls) {
+                    kafkaConsumerConfig.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, SecurityProtocol.SASL_SSL.name());
+                    kafkaProducerConfig.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, SecurityProtocol.SASL_SSL.name());
+                    kafkaAdminConfig.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, SecurityProtocol.SASL_SSL.name());
+                } else {
+                    kafkaConsumerConfig.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, SecurityProtocol.SASL_PLAINTEXT.name());
+                    kafkaProducerConfig.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, SecurityProtocol.SASL_PLAINTEXT.name());
+                    kafkaAdminConfig.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, SecurityProtocol.SASL_PLAINTEXT.name());
+                }
+                // Consumer config
                 kafkaConsumerConfig.put(SaslConfigs.SASL_MECHANISM, ScramMechanism.SCRAM_SHA_256.mechanismName());
                 kafkaConsumerConfig.put(SaslConfigs.SASL_JAAS_CONFIG, settings.getProperty("sasl_jaas_config_reader"));
                 kafkaConsumerConfig.put(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG, settings.getProperty("trust_store_location"));
                 kafkaConsumerConfig.put(SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG, settings.getProperty("trust_store_pw"));
                 kafkaConsumerConfig.put(SslConfigs.SSL_ENDPOINT_IDENTIFICATION_ALGORITHM_CONFIG, "https");
 
-                kafkaProducerConfig.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, SecurityProtocol.SASL_SSL.name());
+                // Producer config
                 kafkaProducerConfig.put(SaslConfigs.SASL_MECHANISM, ScramMechanism.SCRAM_SHA_256.mechanismName());
                 kafkaProducerConfig.put(SaslConfigs.SASL_JAAS_CONFIG, settings.getProperty("sasl_jaas_config_writer"));
                 kafkaProducerConfig.put(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG, settings.getProperty("trust_store_location"));
                 kafkaProducerConfig.put(SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG, settings.getProperty("trust_store_pw"));
                 kafkaProducerConfig.put(SslConfigs.SSL_ENDPOINT_IDENTIFICATION_ALGORITHM_CONFIG, "https");
 
-                kafkaAdminConfig.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, SecurityProtocol.SASL_SSL.name());
+                // Admin config
                 kafkaAdminConfig.put(SaslConfigs.SASL_MECHANISM, ScramMechanism.SCRAM_SHA_256.mechanismName());
                 kafkaAdminConfig.put(SaslConfigs.SASL_JAAS_CONFIG, settings.getProperty("sasl_jaas_config_admin"));
                 kafkaAdminConfig.put(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG, settings.getProperty("trust_store_location"));
