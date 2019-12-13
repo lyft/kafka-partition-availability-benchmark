@@ -105,22 +105,20 @@ class WriteTopic implements Callable<Exception> {
 
             while (keepProducing) {
                 // TODO: Get this from properties
-                final List<Future<RecordMetadata>> produced = new LinkedList<>();
                 for (int i = 0; i < numMessagesToSendPerBatch; i++) {
                     int finalI = i;
                     final byte[] byteData = new String(System.currentTimeMillis() + "" + new String(randomChars)).getBytes();
-                    produced.add(kafkaProducer.send(new ProducerRecord<>(topicName, finalI, byteData)));
+                    produceMessageTimeMillis.record(() -> {
+                        Future<RecordMetadata> produce =
+                                kafkaProducer.send(new ProducerRecord<>(topicName, finalI, byteData));
+                        kafkaProducer.flush();
+                        try {
+                            produce.get();
+                        } catch (InterruptedException | ExecutionException e) {
+                            log.error("Failed to get record metadata after produce");
+                        }
+                    });
                     log.debug("{}: Produced message {}", formatter.format(new Date()), topicId);
-                }
-                produceMessageTimeMillis.record(() -> {
-                    kafkaProducer.flush();
-                }); // TODO: Rename this as flush millis.
-                try {
-                    for (final Future<RecordMetadata> f : produced) {
-                        f.get();
-                    }
-                } catch (InterruptedException | ExecutionException e) {
-                    log.error("Failed to get record metadata after produce");
                 }
                 gaugeMetric(AWAITING_PRODUCE_METRIC_NAME, -1);
                 Thread.sleep(readWriteInterval);
