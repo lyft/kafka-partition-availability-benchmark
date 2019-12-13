@@ -111,12 +111,6 @@ class WriteTopic implements Callable<Exception> {
                     produceMessageTimeMillis.record(() -> {
                         Future<RecordMetadata> produce =
                                 kafkaProducer.send(new ProducerRecord<>(topicName, finalI, byteData));
-                        kafkaProducer.flush();
-                        try {
-                            produce.get();
-                        } catch (InterruptedException | ExecutionException e) {
-                            log.error("Failed to get record metadata after produce");
-                        }
                     });
                     log.debug("{}: Produced message {}", formatter.format(new Date()), topicId);
                 }
