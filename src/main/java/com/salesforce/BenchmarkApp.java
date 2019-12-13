@@ -89,8 +89,7 @@ public class BenchmarkApp implements Callable<Exception> {
 
             // Admin settings
             Map<String, Object> kafkaAdminConfig = new HashMap<>();
-            kafkaAdminConfig.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG,
-                    settings.getProperty("kafka.brokers").replaceAll("9093|9094", "9092"));
+            kafkaAdminConfig.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, settings.getProperty("kafka.brokers"));
 
             // Consumer settings
             Map<String, Object> kafkaConsumerConfig = new HashMap<>(kafkaAdminConfig);
@@ -105,7 +104,6 @@ public class BenchmarkApp implements Callable<Exception> {
             kafkaProducerConfig.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getName());
 
             if (Boolean.valueOf(settings.getProperty("secure_clients_enabled"))) {
-                kafkaConsumerConfig.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, settings.getProperty("kafka.brokers"));
                 kafkaConsumerConfig.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, SecurityProtocol.SASL_SSL.name());
                 kafkaConsumerConfig.put(SaslConfigs.SASL_MECHANISM, ScramMechanism.SCRAM_SHA_256.mechanismName());
                 kafkaConsumerConfig.put(SaslConfigs.SASL_JAAS_CONFIG, settings.getProperty("sasl_jaas_config_reader"));
@@ -113,13 +111,19 @@ public class BenchmarkApp implements Callable<Exception> {
                 kafkaConsumerConfig.put(SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG, settings.getProperty("trust_store_pw"));
                 kafkaConsumerConfig.put(SslConfigs.SSL_ENDPOINT_IDENTIFICATION_ALGORITHM_CONFIG, "https");
 
-                kafkaProducerConfig.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, settings.getProperty("kafka.brokers"));
                 kafkaProducerConfig.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, SecurityProtocol.SASL_SSL.name());
                 kafkaProducerConfig.put(SaslConfigs.SASL_MECHANISM, ScramMechanism.SCRAM_SHA_256.mechanismName());
                 kafkaProducerConfig.put(SaslConfigs.SASL_JAAS_CONFIG, settings.getProperty("sasl_jaas_config_writer"));
                 kafkaProducerConfig.put(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG, settings.getProperty("trust_store_location"));
                 kafkaProducerConfig.put(SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG, settings.getProperty("trust_store_pw"));
                 kafkaProducerConfig.put(SslConfigs.SSL_ENDPOINT_IDENTIFICATION_ALGORITHM_CONFIG, "https");
+
+                kafkaAdminConfig.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, SecurityProtocol.SASL_SSL.name());
+                kafkaAdminConfig.put(SaslConfigs.SASL_MECHANISM, ScramMechanism.SCRAM_SHA_256.mechanismName());
+                kafkaAdminConfig.put(SaslConfigs.SASL_JAAS_CONFIG, settings.getProperty("sasl_jaas_config_admin"));
+                kafkaAdminConfig.put(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG, settings.getProperty("trust_store_location"));
+                kafkaAdminConfig.put(SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG, settings.getProperty("trust_store_pw"));
+                kafkaAdminConfig.put(SslConfigs.SSL_ENDPOINT_IDENTIFICATION_ALGORITHM_CONFIG, "https");
             }
 
             // Global counters
