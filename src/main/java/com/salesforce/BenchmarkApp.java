@@ -89,7 +89,6 @@ public class BenchmarkApp implements Callable<Exception> {
 
             // Admin settings
             Map<String, Object> kafkaAdminConfig = new HashMap<>();
-            boolean useTls = settings.getProperty("kafka.brokers").endsWith("9093");
             kafkaAdminConfig.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, settings.getProperty("kafka.brokers"));
 
             // Consumer settings
@@ -105,7 +104,7 @@ public class BenchmarkApp implements Callable<Exception> {
             kafkaProducerConfig.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getName());
 
             if (Boolean.valueOf(settings.getProperty("secure_clients_enabled"))) {
-                if (useTls) {
+                if (Boolean.valueOf(settings.getProperty("use_tls"))) {
                     kafkaConsumerConfig.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, SecurityProtocol.SASL_SSL.name());
                     kafkaProducerConfig.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, SecurityProtocol.SASL_SSL.name());
                     kafkaAdminConfig.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, SecurityProtocol.SASL_SSL.name());
