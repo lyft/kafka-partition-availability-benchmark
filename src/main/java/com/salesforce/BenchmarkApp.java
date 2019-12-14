@@ -127,7 +127,6 @@ public class BenchmarkApp implements Callable<Exception> {
                 kafkaProducerConfig.put(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG, settings.getProperty("trust_store_location"));
                 kafkaProducerConfig.put(SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG, settings.getProperty("trust_store_pw"));
                 kafkaProducerConfig.put(SslConfigs.SSL_ENDPOINT_IDENTIFICATION_ALGORITHM_CONFIG, "https");
-                kafkaProducerConfig.put(ProducerConfig.LINGER_MS_CONFIG, "5");
 
                 // Admin config
                 kafkaAdminConfig.put(SaslConfigs.SASL_MECHANISM, ScramMechanism.SCRAM_SHA_256.mechanismName());
