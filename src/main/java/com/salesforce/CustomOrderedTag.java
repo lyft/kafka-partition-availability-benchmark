@@ -18,7 +18,7 @@ public class CustomOrderedTag implements Tag {
         this.value = value;
         this.relativeOrder = relativeOrder;
     }
-    static Tag of(String key, String value, int relativeOrder) {
+    static public Tag of(String key, String value, int relativeOrder) {
         return new CustomOrderedTag(key, value, relativeOrder);
     }
 
