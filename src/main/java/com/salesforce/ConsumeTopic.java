@@ -95,7 +95,7 @@ class ConsumeTopic implements Callable<Exception> {
 
             gaugeMetric(AWAITING_CONSUME_METRIC_NAME, 1);
             while (true) {
-                ConsumerRecords<Integer, byte[]> messages = consumer.poll(Duration.ofMillis(100));
+                ConsumerRecords<Integer, byte[]> messages = consumer.poll(Duration.ofMillis(1000));
                 if (messages.count() == 0) {
                     log.debug("No messages detected on {}", topicName);
                     continue;
