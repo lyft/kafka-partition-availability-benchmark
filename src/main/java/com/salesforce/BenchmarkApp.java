@@ -165,20 +165,6 @@ public class BenchmarkApp implements Callable<Exception> {
                 if (numConcurrentConsumers > 0) {
                     consumeTopics = Executors.newFixedThreadPool(numConcurrentConsumers);
                 }
-                ExecutorService printMetrics = Executors.newSingleThreadExecutor();
-                printMetrics.submit((Runnable) () -> {
-                    while (true) {
-                        try {
-                            TimeUnit.SECONDS.sleep(PRINT_METRICS_PERIOD_SECS);
-                        } catch (InterruptedException e) {
-                            throw new RuntimeException("Interrupted print metrics thread");
-                        }
-                        printMetrics(topicsCreated, topicsCreateFailed, topicsProduced,
-                                topicsProduceFailed, topicsConsumed, topicsConsumeFailed,
-                                firstMessageProduceTimeMillis, produceMessageTimeMillis,
-                                consumerReceiveTimeMillis, consumerCommitTimeMillis);
-                    }
-                });
 
                 BlockingQueue<Future<Exception>> createTopicFutures = new ArrayBlockingQueue<>(numConcurrentTopicCreations);
                 BlockingQueue<Future<Exception>> writeFutures = null;
