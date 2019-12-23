@@ -37,7 +37,7 @@ class WriteTopic implements Callable<Exception> {
     private final KafkaProducer<Integer, byte[]> kafkaProducer;
     private final int numMessagesToSendPerBatch;
     private final boolean keepProducing;
-    private final int readWriteInterval;
+    private final int writeInterval;
     private final Timer firstMessageProduceTimeMillis;
     private final Timer produceMessageTimeMillis;
     private final String metricsNamespace;
@@ -53,9 +53,9 @@ class WriteTopic implements Callable<Exception> {
      * @param replicationFactor             Kafka's replication factor for messages
      * @param numMessagesToSendPerBatch     Number of messages to produce continuously
      * @param keepProducing                 Whether we should produce one message only or keep produce thread alive and
-     *                                      produce each readWriteInterval
+     *                                      produce each writeInterval
      * @param kafkaProducer                 Kafka Producer instance we use
-     * @param readWriteInterval             How long to wait between message production
+     * @param writeInterval             How long to wait between message production
      * @param firstMessageProduceTimeMillis  Time it takes to produce the first message
      * @param produceMessageTimeMillis       Time it takes to produce the remaining messages
      * @param metricsNamespace              The namespace of the metrics we emit
@@ -63,7 +63,7 @@ class WriteTopic implements Callable<Exception> {
      */
     public WriteTopic(int topicId, String key, AdminClient kafkaAdminClient, short replicationFactor,
                       int numMessagesToSendPerBatch, boolean keepProducing,
-                      KafkaProducer<Integer, byte[]> kafkaProducer, int readWriteInterval,
+                      KafkaProducer<Integer, byte[]> kafkaProducer, int writeInterval,
                       Timer firstMessageProduceTimeMillis, Timer produceMessageTimeMillis,
                       String metricsNamespace, String clusterName) {
         this.topicId = topicId;
@@ -73,7 +73,7 @@ class WriteTopic implements Callable<Exception> {
         this.numMessagesToSendPerBatch = numMessagesToSendPerBatch;
         this.keepProducing = keepProducing;
         this.kafkaProducer = kafkaProducer;
-        this.readWriteInterval = readWriteInterval;
+        this.writeInterval = writeInterval;
         this.firstMessageProduceTimeMillis = firstMessageProduceTimeMillis;
         this.produceMessageTimeMillis = produceMessageTimeMillis;
         this.metricsNamespace = metricsNamespace;
@@ -119,10 +119,10 @@ class WriteTopic implements Callable<Exception> {
                         }
                     });
                     log.debug("{}: Produced message {}", formatter.format(new Date()), topicId);
-                    Thread.currentThread().sleep(500);
+                    Thread.currentThread().sleep(writeInterval);
                 }
                 gaugeMetric(AWAITING_PRODUCE_METRIC_NAME, -1);
-                Thread.sleep(readWriteInterval);
+                Thread.sleep(writeInterval);
                 gaugeMetric(AWAITING_PRODUCE_METRIC_NAME, 1);
             }
             log.debug("Produce {} messages to topic {}", numMessagesToSendPerBatch, topicName);
