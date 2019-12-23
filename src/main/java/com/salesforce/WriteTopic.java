@@ -119,10 +119,10 @@ class WriteTopic implements Callable<Exception> {
                         }
                     });
                     log.debug("{}: Produced message {}", formatter.format(new Date()), topicId);
-                    gaugeMetric(AWAITING_PRODUCE_METRIC_NAME, -1);
-                    Thread.currentThread().sleep(writeInterval);
-                    gaugeMetric(AWAITING_PRODUCE_METRIC_NAME, 1);
                 }
+                gaugeMetric(AWAITING_PRODUCE_METRIC_NAME, -1);
+                Thread.currentThread().sleep(writeInterval);
+                gaugeMetric(AWAITING_PRODUCE_METRIC_NAME, 1);
             }
             log.debug("Produce {} messages to topic {}", numMessagesToSendPerBatch, topicName);
 
