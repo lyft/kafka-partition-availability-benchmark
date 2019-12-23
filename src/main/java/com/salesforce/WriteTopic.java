@@ -42,6 +42,7 @@ class WriteTopic implements Callable<Exception> {
     private final Timer produceMessageTimeMillis;
     private final String metricsNamespace;
     private final String clusterName;
+    private final int messageSize;
 
 
     /**
@@ -60,12 +61,13 @@ class WriteTopic implements Callable<Exception> {
      * @param produceMessageTimeMillis       Time it takes to produce the remaining messages
      * @param metricsNamespace              The namespace of the metrics we emit
      * @param clusterName                   Name of the cluster we are testing on
+     * @param messageSize                   Size of the messages we send
      */
     public WriteTopic(int topicId, String key, AdminClient kafkaAdminClient, short replicationFactor,
                       int numMessagesToSendPerBatch, boolean keepProducing,
                       KafkaProducer<Integer, byte[]> kafkaProducer, int readWriteInterval,
                       Timer firstMessageProduceTimeMillis, Timer produceMessageTimeMillis,
-                      String metricsNamespace, String clusterName) {
+                      String metricsNamespace, String clusterName, int messageSize) {
         this.topicId = topicId;
         this.key = key;
         this.kafkaAdminClient = kafkaAdminClient;
@@ -78,6 +80,7 @@ class WriteTopic implements Callable<Exception> {
         this.produceMessageTimeMillis = produceMessageTimeMillis;
         this.metricsNamespace = metricsNamespace;
         this.clusterName = clusterName;
+        this.messageSize = messageSize;
     }
 
     @Override
@@ -89,9 +92,7 @@ class WriteTopic implements Callable<Exception> {
                     clusterName, metricsNamespace, false);
 
             Map<String, String> messageData = new HashMap<>();
-            // TODO: Tunable size of messages
-            int sizeOfMessage = 512;
-            char[] randomChars = new char[sizeOfMessage];
+            char[] randomChars = new char[messageSize];
             Arrays.fill(randomChars, '9');
             messageData.put("Junk", String.valueOf(randomChars));
             final byte[] byteDataInit = (System.currentTimeMillis() + "" + new String(randomChars)).getBytes();

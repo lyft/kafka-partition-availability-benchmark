@@ -83,6 +83,7 @@ public class BenchmarkApp implements Callable<Exception> {
 
             String topicPrefix = settings.getProperty("default_topic_prefix");
             int writeIntervalMs = Integer.parseInt(settings.getProperty("write_interval_ms"));
+            int messageSize = Integer.parseInt(settings.getProperty("message_size"));
             int readIntervalMs = Integer.parseInt(settings.getProperty("read_interval_ms"));
             int numMessagesToSendPerBatch = Integer.parseInt(settings.getProperty("messages_per_batch"));
             boolean keepProducing = Boolean.parseBoolean(settings.getProperty("keep_producing"));
@@ -206,7 +207,7 @@ public class BenchmarkApp implements Callable<Exception> {
                         writeFutures.put(writeTopics.submit(new WriteTopic(topic, topicPrefix, kafkaAdminClient,
                                 replicationFactor, numMessagesToSendPerBatch,
                                 keepProducing, kafkaProducer, writeIntervalMs, firstMessageProduceTimeMillis,
-                                produceMessageTimeMillis, metricsNamespace, clusterName)));
+                                produceMessageTimeMillis, metricsNamespace, clusterName, messageSize)));
                         topicsProduced.increment();
                     }
 
