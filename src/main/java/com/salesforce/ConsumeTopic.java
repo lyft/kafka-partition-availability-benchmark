@@ -93,14 +93,14 @@ class ConsumeTopic implements Callable<Exception> {
                 consumer.seekToBeginning(partitions);
             }
 
-            gaugeMetric(AWAITING_CONSUME_METRIC_NAME, 1);
+            //gaugeMetric(AWAITING_CONSUME_METRIC_NAME, 1);
             while (true) {
                 ConsumerRecords<Integer, byte[]> messages = consumer.poll(Duration.ofMillis(1000));
                 if (messages.count() == 0) {
                     log.debug("No messages detected on {}", topicName);
                     continue;
                 }
-                gaugeMetric(AWAITING_CONSUME_METRIC_NAME, -1);
+                //gaugeMetric(AWAITING_CONSUME_METRIC_NAME, -1);
 
                 AtomicLong lastOffset = new AtomicLong();
                 log.debug("Consuming {} records", messages.records(topicPartition).size());
@@ -109,11 +109,11 @@ class ConsumeTopic implements Callable<Exception> {
                             lastOffset.set(consumerRecord.offset());
                         });
 
-                gaugeMetric(AWAITING_COMMIT_METRIC_NAME, 1);
+                //gaugeMetric(AWAITING_COMMIT_METRIC_NAME, 1);
                 consumerCommitTimeMillis.record(() ->
                         consumer.commitSync(Collections.singletonMap(topicPartition,
                                 new OffsetAndMetadata(lastOffset.get() + 1))));
-                gaugeMetric(AWAITING_COMMIT_METRIC_NAME, -1);
+                //gaugeMetric(AWAITING_COMMIT_METRIC_NAME, -1);
 
                 consumer.seek(topicPartition, lastOffset.get() + 1);
 
@@ -124,7 +124,7 @@ class ConsumeTopic implements Callable<Exception> {
                 log.debug("Last consumed message {} -> {}..., consumed {} messages, topic: {}",
                         lastMessage.key(), truncatedValue, messages.count(), topicName);
                 Thread.sleep(readInterval);
-                gaugeMetric(AWAITING_CONSUME_METRIC_NAME, 1);
+                //gaugeMetric(AWAITING_CONSUME_METRIC_NAME, 1);
             }
         } catch (Exception e) {
             log.error("Failed consume", e);

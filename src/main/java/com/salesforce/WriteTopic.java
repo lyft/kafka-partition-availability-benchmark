@@ -98,7 +98,7 @@ class WriteTopic implements Callable<Exception> {
 
 
             // Produce one message to "warm" kafka up
-            gaugeMetric(AWAITING_PRODUCE_METRIC_NAME, 1);
+            //gaugeMetric(AWAITING_PRODUCE_METRIC_NAME, 1);
             firstMessageProduceTimeMillis.record(() ->
                     kafkaProducer.send(new ProducerRecord<>(topicName, topicId, byteDataInit)));
             log.debug("Produced first message to topic {}", topicName);
@@ -120,9 +120,9 @@ class WriteTopic implements Callable<Exception> {
                     });
                     log.debug("{}: Produced message {}", formatter.format(new Date()), topicId);
                 }
-                gaugeMetric(AWAITING_PRODUCE_METRIC_NAME, -1);
+                //gaugeMetric(AWAITING_PRODUCE_METRIC_NAME, -1);
                 Thread.currentThread().sleep(writeInterval);
-                gaugeMetric(AWAITING_PRODUCE_METRIC_NAME, 1);
+                //gaugeMetric(AWAITING_PRODUCE_METRIC_NAME, 1);
             }
             log.debug("Produce {} messages to topic {}", numMessagesToSendPerBatch, topicName);
 
