@@ -10,6 +10,8 @@ package com.salesforce;
 import io.micrometer.core.instrument.Clock;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Metrics;
+import io.micrometer.core.lang.NonNull;
+import io.micrometer.statsd.StatsdConfig;
 import io.micrometer.statsd.StatsdMeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,7 +29,24 @@ public class Main {
     private static final Logger log = LoggerFactory.getLogger(Main.class);
 
     public static void initGlobalMetricsRegistry() {
-        MeterRegistry registry = new StatsdMeterRegistry(getStr -> null, Clock.SYSTEM);
+        StatsdConfig config = new StatsdConfig() {
+            @Override
+            public String get(String k) {
+                return null;
+            }
+
+            @Override
+            public int port() {
+                return com.lyft.statsd.Settings.getStatsdPort();
+            }
+
+            @Override
+            public @NonNull String host() {
+                return com.lyft.statsd.Settings.getStatsdHostname();
+            }
+        };
+
+        MeterRegistry registry = new StatsdMeterRegistry(config, Clock.SYSTEM);
         Metrics.globalRegistry.add(registry);
     }
 
