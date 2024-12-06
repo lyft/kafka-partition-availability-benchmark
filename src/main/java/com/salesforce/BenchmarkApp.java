@@ -104,6 +104,22 @@ public class BenchmarkApp implements Callable<Exception> {
             kafkaProducerConfig.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, IntegerSerializer.class.getName());
             kafkaProducerConfig.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getName());
 
+            if (Boolean.valueOf(settings.getProperty("iam_auth"))) {
+                kafkaConsumerConfig.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, SecurityProtocol.SASL_SSL.name());
+                kafkaConsumerConfig.put(SaslConfigs.SASL_JAAS_CONFIG, "software.amazon.msk.auth.iam.IAMLoginModule required;");
+                kafkaConsumerConfig.put(SaslConfigs.SASL_MECHANISM, "AWS_MSK_IAM");
+                kafkaConsumerConfig.put(SaslConfigs.SASL_CLIENT_CALLBACK_HANDLER_CLASS, "software.amazon.msk.auth.iam.IAMClientCallbackHandler");
+                kafkaProducerConfig.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, SecurityProtocol.SASL_SSL.name());
+                kafkaProducerConfig.put(SaslConfigs.SASL_JAAS_CONFIG, "software.amazon.msk.auth.iam.IAMLoginModule required;");
+                kafkaProducerConfig.put(SaslConfigs.SASL_MECHANISM, "AWS_MSK_IAM");
+                kafkaProducerConfig.put(SaslConfigs.SASL_CLIENT_CALLBACK_HANDLER_CLASS, "software.amazon.msk.auth.iam.IAMClientCallbackHandler");
+                kafkaAdminConfig.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, SecurityProtocol.SASL_SSL.name());
+                kafkaAdminConfig.put(SaslConfigs.SASL_JAAS_CONFIG, "software.amazon.msk.auth.iam.IAMLoginModule required;");
+                kafkaAdminConfig.put(SaslConfigs.SASL_MECHANISM, "AWS_MSK_IAM");
+                kafkaAdminConfig.put(SaslConfigs.SASL_CLIENT_CALLBACK_HANDLER_CLASS, "software.amazon.msk.auth.iam.IAMClientCallbackHandler");
+            }
+
+
             if (Boolean.valueOf(settings.getProperty("secure_clients_enabled"))) {
                 if (Boolean.valueOf(settings.getProperty("use_tls"))) {
                     kafkaConsumerConfig.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, SecurityProtocol.SASL_SSL.name());
